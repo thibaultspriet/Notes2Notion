@@ -1,0 +1,21 @@
+Create a new page titled "{title}"
+using the source page with ID {notion_page_id}.
+I will provide a draft below.
+From this draft, extract and send absolutely all the content to the Notion page.
+If the draft is long, split it into multiple Notion block creation calls (max 1500 characters per block).
+Ensure all content is uploaded sequentially until complete.
+Use the following Notion block types:
+---------------------------------
+heading_1 / heading_2 – For section and subsection titles
+→ Preserve and use numbered titles (e.g., "1. Introduction", "2.1 Risk Mitigation")
+paragraph – For standard text
+bulleted_list_item – For unordered lists or key points
+numbered_list_item – For step-by-step instructions, ordered items
+quote – To highlight key definitions, insights, or quotes
+callout – To emphasize tips, warnings, or essential ideas
+code – For code snippets, prompt examples, or commands
+toggle – For collapsible sections like detailed explanations or FAQs
+to_do – For learning objectives or checklist-style tasks
+----------------------------------
+Here is my draft (remember to send all the contents) :
+{draft}
