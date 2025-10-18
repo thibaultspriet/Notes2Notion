@@ -19,38 +19,39 @@ class ImageTextExtractor:
     def extract_text(self) -> str:
         images_path = utils.get_file_paths(self.repo_path)
         for image_path in images_path:
-            with open(image_path, "rb") as f:
-                image_base64 = base64.b64encode(f.read()).decode("utf-8")
+            if ".gitkeep" not in image_path:
+                with open(image_path, "rb") as f:
+                    image_base64 = base64.b64encode(f.read()).decode("utf-8")
 
-            prompt_text = ("Extract all text from the provided image."
-                           " The text is handwritten and may contain "
-                           "abbreviations or imperfect handwriting."
-                           "Accurately transcribe what is written."
-                           "Expand common abbreviations if you are confident "
-                           "about their meaning."
-                           "Return only the extracted text, no commentary.")
+                prompt_text = ("Extract all text from the provided image."
+                               " The text is handwritten and may contain "
+                               "abbreviations or imperfect handwriting."
+                               "Accurately transcribe what is written."
+                               "Expand common abbreviations if you are confident "
+                               "about their meaning."
+                               "Return only the extracted text, no commentary.")
 
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt_text
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}"
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": prompt_text
                                 },
-                            },
-                        ],
-                    }
-                ],
-            )
-            self.text = self.text + response.choices[0].message.content
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_base64}"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                )
+                self.text = self.text + response.choices[0].message.content
         return self.text
 
 
