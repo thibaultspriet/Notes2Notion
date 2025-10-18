@@ -7,7 +7,7 @@ from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
 from typing import Optional
 
-from Notes2Notion import utils
+from . import utils
 
 
 class ImageTextExtractor:

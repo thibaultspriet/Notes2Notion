@@ -10,7 +10,7 @@ from langchain_core.messages import (HumanMessage, AIMessage, FunctionMessage,
                                      SystemMessage)
 from dotenv import load_dotenv
 
-from tooling import McpNotionConnector, ImageTextExtractor
+from .tooling import McpNotionConnector, ImageTextExtractor
 
 load_dotenv()
 
@@ -130,7 +130,9 @@ class NotesCreator:
 
         # Prepare initial message
         title = self.image_text_extractor.repo_path.split("/")[-1]
-        filename = "./base_prompt.txt"
+        # Use absolute path relative to this file's location
+        current_dir = Path(__file__).parent
+        filename = current_dir / "base_prompt.txt"
         notion_page_id = os.getenv("NOTION_PAGE_ID")
         base_prompt = Path(filename).read_text()
         filled_prompt = base_prompt.format(

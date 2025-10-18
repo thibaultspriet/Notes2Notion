@@ -69,14 +69,32 @@ PYTHONPATH=src uv run pytest -v
 
 ## ▶️ Running the App
 
+### Test Mode (No LLM Calls) 🧪
+
+**Perfect for development and testing without incurring LLM costs!**
+
+Run the application with mock data instead of real LLM calls:
+
+```bash
+PYTHONPATH=src uv run python src/Notes2Notion/main.py --test-mode
+```
+
+**What happens in test mode:**
+- ✅ Detects images in `notes_pictures/`
+- ✅ Generates structured mock content (no GPT-4o-mini calls)
+- ✅ Simulates the enhancement workflow (no Azure OpenAI calls)
+- ✅ **Actually uploads to Notion** (tests the real Notion integration)
+- 💰 **Cost: $0** (zero LLM API calls)
+
+### Normal mode
+
 1. **Add your handwritten notes images**:
    - Place your photos in the `src/Notes2Notion/notes_pictures/` directory
    - Supported formats: PNG, JPG, JPEG
 
 2. **Run the application**:
    ```bash
-   cd src/Notes2Notion
-   PYTHONPATH=../../src uv run python main.py
+   PYTHONPATH=src uv run python src/Notes2Notion/main.py
    ```
 
 The application will:
@@ -89,7 +107,7 @@ The application will:
 1. Write your handwritten notes
 2. Take photos of your notes
 3. Upload the photos to `src/Notes2Notion/notes_pictures/`
-4. Run `uv run python main.py` from the `src/Notes2Notion` directory
+4. Run `PYTHONPATH=src uv run python src/Notes2Notion/main.py` from the project root
 5. Check your Notion page for the newly created structured notes!
 
 ## 🧰 Tech Stack
