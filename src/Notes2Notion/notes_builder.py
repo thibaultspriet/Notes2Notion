@@ -10,7 +10,7 @@ from langchain_core.messages import (HumanMessage, AIMessage, FunctionMessage,
                                      SystemMessage)
 from dotenv import load_dotenv
 
-from tooling import McpNotionConnector, ImageTextExtractor
+from .tooling import McpNotionConnector, ImageTextExtractor
 
 load_dotenv()
 
@@ -128,23 +128,42 @@ class NotesCreator:
         workflow = await self.draft_enhancer.create_notes_workflow()
         workflow_result = await workflow.ainvoke({"user_input": query})
 
+        # Extract the enhanced draft from workflow result
+        enhanced_draft = workflow_result.get("agent_response", str(workflow_result))
+
         # Prepare initial message
         title = self.image_text_extractor.repo_path.split("/")[-1]
-        filename = "./base_prompt.txt"
+        # Use absolute path relative to this file's location
+        current_dir = Path(__file__).parent
+        filename = current_dir / "base_prompt.txt"
         notion_page_id = os.getenv("NOTION_PAGE_ID")
         base_prompt = Path(filename).read_text()
         filled_prompt = base_prompt.format(
             title=title,
             notion_page_id=notion_page_id,
-            draft=workflow_result
+            draft=enhanced_draft
             )
+        print(f"\n📝 Prompt sent to LLM for Notion upload:")
+        print(f"Title: {title}")
+        print(f"Parent Page ID: {notion_page_id}")
+        print(f"Draft preview (first 200 chars): {enhanced_draft[:200]}...")
         return [HumanMessage(content=filled_prompt)]
 
     async def write_in_notion(self, messages):
         final_text = []
-        while True:
+        max_iterations = 10  # Prevent infinite loops
+        iteration = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 5  # Stop if we get 5 errors in a row
+
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔄 Iteration {iteration}/50 - Calling LLM...")
+
             # Call LLM with current messages
             message = await self.llm_with_functions.ainvoke(messages)
+
+            print(f"✉️  LLM response - has function_call: {hasattr(message, 'additional_kwargs') and 'function_call' in message.additional_kwargs}")
 
             if (hasattr(message, "additional_kwargs")
                     and "function_call" in message.additional_kwargs):
@@ -155,11 +174,16 @@ class NotesCreator:
                 func_args_dict = json.loads(func_args_json)
 
                 # Call the actual tool via MCP session
+                print(f"🔧 Calling tool: {func_name}")
+                print(f"📦 Args: {func_args_json[:200]}..." if len(func_args_json) > 200 else f"📦 Args: {func_args_json}")
+
                 result = await (self.notion_connector.session
                                 .call_tool(func_name, func_args_dict))
 
                 final_text.append(
                     f"[Calling tool {func_name} with args {func_args_json}]")
+
+                print(f"✅ Tool result length: {len(''.join([c.text for c in result.content]))} chars")
 
                 # Append function_call message
                 messages.append(AIMessage(content="", additional_kwargs={
@@ -171,12 +195,28 @@ class NotesCreator:
                     FunctionMessage(name=func_name,
                                     content=result_text))
 
+                # Check if this was an error response
+                if "error" in result_text.lower() or "validation" in result_text.lower():
+                    consecutive_errors += 1
+                    print(f"⚠️  Tool call resulted in error ({consecutive_errors}/{max_consecutive_errors})")
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(f"❌ Stopping after {max_consecutive_errors} consecutive errors")
+                        final_text.append(f"[Stopped after {max_consecutive_errors} consecutive errors]")
+                        break
+                else:
+                    consecutive_errors = 0  # Reset counter on success
+
             else:
-                # Final assistant reply
+                # LLM didn't call a function - it's done
+                print(f"🏁 LLM finished - no more function calls")
                 if message.content:
+                    print(f"📝 Final message: {message.content[:100]}...")
                     final_text.append(message.content)
-                if not message.additional_kwargs:
-                    break
+                break  # Exit immediately when LLM stops calling functions
+
+        if iteration >= max_iterations:
+            print(f"⚠️  Reached maximum iterations ({max_iterations})")
+            final_text.append(f"[Reached maximum iterations: {max_iterations}]")
 
         return "\n".join(final_text)
 
