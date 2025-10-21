@@ -14,11 +14,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Accept build arguments (defaults)
-ARG API_HOST=localhost
+ARG API_HOST=http://localhost:5001
 ARG APP_ENV=production
 
 # Set environment variables for build time
-ENV NEXT_PUBLIC_API_URL=http://${API_HOST}:5001
+ENV NEXT_PUBLIC_API_URL=${API_HOST}
 ENV NEXT_PUBLIC_APP_ENV=${APP_ENV}
 
 RUN npm run build
