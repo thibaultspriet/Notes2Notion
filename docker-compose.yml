@@ -53,7 +53,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.rule=Host(`notes2notion-fullstack-du42m1-d3baa6-72-61-164-187.traefik.me`)"
+      - "traefik.http.routers.frontend.rule=Host(`n2n.thibaultspriet.fr`)"
       - "traefik.http.routers.frontend.tls.certResolver=letsencrypt"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
