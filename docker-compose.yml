@@ -28,7 +28,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.rule=Host(`notes2notion-api-fullstack-du42m1-d3baa6-72-61-164-187.traefik.me`)"
+      - "traefik.http.routers.backend.rule=Host(`n2n-api.thibaultspriet.fr`)"
       - "traefik.http.routers.backend.tls.certResolver=letsencrypt"
       - "traefik.http.services.backend.loadbalancer.server.port=5001"
 
