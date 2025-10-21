@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: notes2notion-backend
-    ports:
-      - "5001:5001"
+    expose:
+      - "5001"
     env_file:
       - .env
     environment:
@@ -36,8 +34,8 @@ services:
         - API_HOST=${API_HOST:-localhost}
         - APP_ENV=${APP_ENV:-production}
     container_name: notes2notion-frontend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_ENV=${APP_ENV:-production}
@@ -45,8 +43,13 @@ services:
       - backend
     restart: unless-stopped
     networks:
-      - notes2notion-network
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
 networks:
-  notes2notion-network:
-    driver: bridge
+  okploy-network:
+    external: true
