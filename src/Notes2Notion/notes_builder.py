@@ -5,22 +5,28 @@ from typing import TypedDict
 from pathlib import Path
 
 from langgraph.graph import StateGraph
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import (HumanMessage, AIMessage, FunctionMessage,
                                      SystemMessage)
 from dotenv import load_dotenv
 
 from .tooling import McpNotionConnector, ImageTextExtractor
+from .settings import S, M
 
 load_dotenv()
 
 
 class DraftEnhancer:
     def __init__(self):
-        self.llm = AzureChatOpenAI(
-            azure_deployment="gpt-4-32k-last",
-            openai_api_version="2023-07-01-preview",
-        )
+        self.llm_for_notes_plan = ChatOpenAI(model=S,
+                                             temperature=0)
+
+        self.llm_for_notes_content = ChatOpenAI(model=M,
+                                                temperature=0)
+
+        self.llm_for_check = ChatOpenAI(model=S,
+                                        temperature=0)
+
         self.state = None
 
     class State(TypedDict):
@@ -34,11 +40,12 @@ class DraftEnhancer:
         messages = [
             SystemMessage(content="Organize this draft into sections with headings. "
                                   "Preserve numbered titles like '1. Introduction'."
+                                  "Preserve any schemas."
                                   "Use only the language of the draft. Do "
                                   "not add extra content."),
             HumanMessage(content=draft)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_notes_plan.ainvoke(messages)
         print("response 1 : ", response.content)
         state["agent_response"] = response.content
         return state
@@ -49,10 +56,12 @@ class DraftEnhancer:
         structured_draft = state["agent_response"]
         messages = [
             SystemMessage(content="Improve this draft : ensure it is clear and easy to understand."
+                                  "Keep sections as provided."
+                                  "Preserve any schemas."
                                   "Ensure the facts are correct."),
             HumanMessage(content=structured_draft)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_notes_content.ainvoke(messages)
         print("response 2 : ", response.content)
         state["agent_response"] = response.content
         return state
@@ -67,7 +76,7 @@ class DraftEnhancer:
                                   "answer only the word 'ok' in lowercase."),
             HumanMessage(content=content)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_check.ainvoke(messages)
         print("response 3 : ", response.content)
         if response.content == "ok":
             return "ok"
@@ -107,10 +116,10 @@ class NotesCreator:
                  notion_connector: McpNotionConnector,
                  draft_enhancer: DraftEnhancer,
                  image_text_extractor: ImageTextExtractor):
-        self.llm = AzureChatOpenAI(
-            azure_deployment="gpt-4-32k-last",
-            openai_api_version="2023-07-01-preview",
-        )
+
+        self.llm_for_notion_mcp = ChatOpenAI(model=M,
+                                             temperature=0)
+
         self.notion_connector = notion_connector
         self.draft_enhancer = draft_enhancer
         self.image_text_extractor = image_text_extractor
@@ -133,6 +142,7 @@ class NotesCreator:
 
         # Prepare initial message
         title = self.image_text_extractor.repo_path.split("/")[-1]
+
         # Use absolute path relative to this file's location
         current_dir = Path(__file__).parent
         filename = current_dir / "base_prompt.txt"
@@ -151,10 +161,12 @@ class NotesCreator:
 
     async def write_in_notion(self, messages):
         final_text = []
-        max_iterations = 10  # Prevent infinite loops
+        # Prevent infinite loops
+        max_iterations = 10
         iteration = 0
         consecutive_errors = 0
-        max_consecutive_errors = 5  # Stop if we get 5 errors in a row
+        # Stop if we get 5 errors in a row
+        max_consecutive_errors = 5
 
         while iteration < max_iterations:
             iteration += 1
@@ -233,7 +245,8 @@ class NotesCreator:
             })
 
         # Bind functions to LLM
-        self.llm_with_functions = self.llm.bind(functions=functions)
+        self.llm_with_functions = (self.llm_for_notion_mcp
+                                   .bind(functions=functions))
 
     def get_primary_notes(self):
         query = self.image_text_extractor.extract_text()
