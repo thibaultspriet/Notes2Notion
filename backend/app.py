@@ -22,8 +22,15 @@ from Notes2Notion.tooling import ImageTextExtractor, McpNotionConnector
 from Notes2Notion.mock_components import (MockImageTextExtractor, MockDraftEnhancer,
                                           MockNotesCreator)
 
+# Import OAuth and database modules
+from oauth import require_oauth, handle_oauth_callback
+from models import init_db, update_user_notion_page
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Next.js frontend
+
+# Initialize database
+init_db()
 
 # Configuration
 UPLOAD_FOLDER = Path(__file__).parent / "uploads"
@@ -94,20 +101,122 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'service': 'Notes2Notion Backend',
-        'version': '2.0.0-pwa'
+        'version': '2.0.0-pwa-oauth'
     })
 
 
+@app.route('/api/oauth/callback', methods=['POST'])
+def oauth_callback():
+    """
+    Handle Notion OAuth callback.
+
+    Expects JSON body with:
+    - code: Authorization code from Notion
+
+    Returns:
+    - session_token: JWT token for subsequent requests
+    - workspace_name: User's Notion workspace
+    - needs_page_setup: Whether user needs to configure default page
+    """
+    try:
+        data = request.get_json()
+        code = data.get('code')
+
+        if not code:
+            return jsonify({'error': 'Missing authorization code'}), 400
+
+        # Handle OAuth flow: exchange code for token, store user, create session
+        result = handle_oauth_callback(code)
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"\n❌ OAuth callback error:")
+        print(error_trace)
+        return jsonify({
+            'error': 'OAuth authentication failed',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/user/page-id', methods=['POST'])
+@require_oauth
+def set_page_id(current_user):
+    """
+    Set the default Notion page ID for the authenticated user.
+
+    This is where the user's handwritten notes will be created.
+
+    Expects JSON body with:
+    - page_id: Notion page ID
+
+    Returns:
+    - success: Boolean indicating if update succeeded
+    """
+    try:
+        data = request.get_json()
+        page_id = data.get('page_id')
+
+        if not page_id:
+            return jsonify({'error': 'Missing page_id'}), 400
+
+        # Update user's default page ID
+        update_user_notion_page(current_user.bot_id, page_id)
+
+        return jsonify({
+            'success': True,
+            'message': 'Default page ID updated successfully'
+        }), 200
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"\n❌ Error updating page ID:")
+        print(error_trace)
+        return jsonify({
+            'error': 'Failed to update page ID',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/user/info', methods=['GET'])
+@require_oauth
+def get_user_info(current_user):
+    """
+    Get information about the authenticated user.
+
+    Returns:
+    - workspace_name: User's Notion workspace
+    - has_page_id: Whether user has configured a default page
+    - bot_id: User identifier
+    """
+    return jsonify({
+        'workspace_name': current_user.workspace_name,
+        'has_page_id': current_user.notion_page_id is not None,
+        'bot_id': current_user.bot_id
+    }), 200
+
+
 @app.route('/api/upload', methods=['POST'])
-@require_access_code
-def upload_file():
+@require_oauth
+def upload_file(current_user):
     """
     Upload and process an image to create a Notion page.
+
+    Requires OAuth authentication.
+    The authenticated user's Notion token will be used to create the page.
 
     Form data:
     - photo: The image file
     - test_mode: 'true' or 'false' (optional, default: false)
     """
+    # Check if user has configured a default page ID
+    if not current_user.notion_page_id:
+        return jsonify({
+            'error': 'No default page configured',
+            'message': 'Please configure a default Notion page via /api/user/page-id'
+        }), 400
+
     # Validate file presence
     if 'photo' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -120,26 +229,38 @@ def upload_file():
     # Get test_mode parameter
     test_mode = request.form.get('test_mode', 'false').lower() == 'true'
 
-    #TODO: handle concurrency issues with multiple uploads from different users
     if file and allowed_file(file.filename):
-        # Clean upload folder first
-        for old_file in UPLOAD_FOLDER.glob('*'):
+        # Create user-specific upload folder to handle concurrency
+        user_upload_folder = UPLOAD_FOLDER / current_user.bot_id
+        user_upload_folder.mkdir(exist_ok=True)
+
+        # Clean user's upload folder
+        for old_file in user_upload_folder.glob('*'):
             if old_file.is_file():
                 old_file.unlink()
 
         # Save new file
         filename = secure_filename(file.filename)
-        filepath = UPLOAD_FOLDER / filename
+        filepath = user_upload_folder / filename
         file.save(filepath)
 
         # Process the image and upload to Notion
         try:
             print(f"\n{'='*60}")
+            print(f"👤 User: {current_user.workspace_name} (bot_id: {current_user.bot_id})")
             print(f"📸 Processing file: {filepath}")
             print(f"🧪 Test mode: {test_mode}")
+            print(f"📄 Target page: {current_user.notion_page_id}")
             print(f"{'='*60}\n")
 
-            result = asyncio.run(process_and_upload(str(UPLOAD_FOLDER), test_mode))
+            result = asyncio.run(
+                process_and_upload(
+                    str(user_upload_folder),
+                    test_mode,
+                    current_user.access_token,
+                    current_user.notion_page_id
+                )
+            )
 
             print(f"\n✅ Processing completed successfully!")
 
@@ -162,13 +283,20 @@ def upload_file():
     return jsonify({'error': 'Invalid file type. Allowed: PNG, JPG, JPEG, GIF'}), 400
 
 
-async def process_and_upload(folder_path: str, test_mode: bool = False):
+async def process_and_upload(
+    folder_path: str,
+    test_mode: bool,
+    user_notion_token: str,
+    user_notion_page_id: str
+):
     """
     Process the uploaded image and create Notion page.
 
     Args:
         folder_path: Path to the folder containing the image
         test_mode: If True, uses mock components (no LLM calls)
+        user_notion_token: User's Notion OAuth access token
+        user_notion_page_id: User's default Notion page ID for notes
 
     Returns:
         Success message string
@@ -195,7 +323,10 @@ async def process_and_upload(folder_path: str, test_mode: bool = False):
                 image_text_extractor
             )
 
-        await notes_creator.notes_creation()
+        await notes_creator.notes_creation(
+            user_notion_token=user_notion_token,
+            user_notion_page_id=user_notion_page_id
+        )
 
         mode_label = "TEST MODE" if test_mode else "PRODUCTION MODE"
         return f"Successfully created Notion page! ({mode_label})"
@@ -205,13 +336,13 @@ async def process_and_upload(folder_path: str, test_mode: bool = False):
 
 
 if __name__ == '__main__':
-    # Verify environment variables
-    required_vars = ['NOTION_TOKEN', 'NOTION_PAGE_ID']
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    # Verify OAuth configuration
+    required_oauth_vars = ['NOTION_CLIENT_ID', 'NOTION_CLIENT_SECRET']
+    missing_oauth_vars = [var for var in required_oauth_vars if not os.getenv(var)]
 
-    if missing_vars:
-        print(f"\n❌ ERROR: Missing environment variables: {', '.join(missing_vars)}")
-        print("Please check your .env file")
+    if missing_oauth_vars:
+        print(f"\n❌ ERROR: Missing OAuth environment variables: {', '.join(missing_oauth_vars)}")
+        print("Please check your .env file and configure Notion OAuth credentials")
         sys.exit(1)
 
     # Check OpenAI configuration
@@ -226,14 +357,20 @@ if __name__ == '__main__':
     port = int(os.getenv('BACKEND_PORT', 5001))
 
     print(f"\n{'='*60}")
-    print(f"  Notes2Notion Backend API")
+    print(f"  Notes2Notion Backend API (OAuth)")
     print(f"{'='*60}")
     print(f"\nAPI Endpoints:")
     print(f"  - GET  http://localhost:{port}/api/health")
+    print(f"  - POST http://localhost:{port}/api/oauth/callback")
+    print(f"  - GET  http://localhost:{port}/api/user/info")
+    print(f"  - POST http://localhost:{port}/api/user/page-id")
     print(f"  - POST http://localhost:{port}/api/upload")
+    print(f"\nAuthentication:")
+    print(f"  - Method: OAuth 2.0 (Notion)")
+    print(f"  - Client ID: {os.getenv('NOTION_CLIENT_ID')}")
     print(f"\nEnvironment:")
-    print(f"  - Notion: ✅ Configured")
     print(f"  - OpenAI: {'✅ Azure' if has_azure else '✅ OpenAI'}")
+    print(f"  - Database: ✅ Initialized")
     print(f"  - Upload folder: {UPLOAD_FOLDER}")
     print(f"\n{'='*60}\n")
 

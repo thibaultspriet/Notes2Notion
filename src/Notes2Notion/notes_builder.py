@@ -5,22 +5,28 @@ from typing import TypedDict
 from pathlib import Path
 
 from langgraph.graph import StateGraph
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import (HumanMessage, AIMessage, FunctionMessage,
                                      SystemMessage)
 from dotenv import load_dotenv
 
 from .tooling import McpNotionConnector, ImageTextExtractor
+from .settings import S, M
 
 load_dotenv()
 
 
 class DraftEnhancer:
     def __init__(self):
-        self.llm = AzureChatOpenAI(
-            azure_deployment="gpt-4-32k-last",
-            openai_api_version="2023-07-01-preview",
-        )
+        self.llm_for_notes_plan = ChatOpenAI(model=S,
+                                             temperature=0)
+
+        self.llm_for_notes_content = ChatOpenAI(model=M,
+                                                temperature=0)
+
+        self.llm_for_check = ChatOpenAI(model=S,
+                                        temperature=0)
+
         self.state = None
 
     class State(TypedDict):
@@ -34,11 +40,12 @@ class DraftEnhancer:
         messages = [
             SystemMessage(content="Organize this draft into sections with headings. "
                                   "Preserve numbered titles like '1. Introduction'."
+                                  "Preserve any schemas."
                                   "Use only the language of the draft. Do "
                                   "not add extra content."),
             HumanMessage(content=draft)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_notes_plan.ainvoke(messages)
         print("response 1 : ", response.content)
         state["agent_response"] = response.content
         return state
@@ -49,10 +56,12 @@ class DraftEnhancer:
         structured_draft = state["agent_response"]
         messages = [
             SystemMessage(content="Improve this draft : ensure it is clear and easy to understand."
+                                  "Keep sections as provided."
+                                  "Preserve any schemas."
                                   "Ensure the facts are correct."),
             HumanMessage(content=structured_draft)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_notes_content.ainvoke(messages)
         print("response 2 : ", response.content)
         state["agent_response"] = response.content
         return state
@@ -67,7 +76,7 @@ class DraftEnhancer:
                                   "answer only the word 'ok' in lowercase."),
             HumanMessage(content=content)
         ]
-        response = await self.llm.ainvoke(messages)
+        response = await self.llm_for_check.ainvoke(messages)
         print("response 3 : ", response.content)
         if response.content == "ok":
             return "ok"
@@ -107,21 +116,35 @@ class NotesCreator:
                  notion_connector: McpNotionConnector,
                  draft_enhancer: DraftEnhancer,
                  image_text_extractor: ImageTextExtractor):
-        self.llm = AzureChatOpenAI(
-            azure_deployment="gpt-4-32k-last",
-            openai_api_version="2023-07-01-preview",
-        )
+
+        self.llm_for_notion_mcp = ChatOpenAI(model=M,
+                                             temperature=0)
+
         self.notion_connector = notion_connector
         self.draft_enhancer = draft_enhancer
         self.image_text_extractor = image_text_extractor
         self.llm_with_functions = None
 
-    async def notes_creation(self):
-        messages = await self.prepare_content()
+    async def notes_creation(self, user_notion_token, user_notion_page_id):
+        """
+        Create notes in Notion from extracted and enhanced text.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token
+            user_notion_page_id: User's target Notion page ID
+        """
+        messages = await self.prepare_content(user_notion_token, user_notion_page_id)
         await self.write_in_notion(messages)
 
-    async def prepare_content(self):
-        await self.connect_notion_to_llm()
+    async def prepare_content(self, user_notion_token, user_notion_page_id):
+        """
+        Prepare content for Notion upload: extract, enhance, and format.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token
+            user_notion_page_id: User's target Notion page ID
+        """
+        await self.connect_notion_to_llm(user_notion_token)
 
         query = self.get_primary_notes()
 
@@ -133,28 +156,34 @@ class NotesCreator:
 
         # Prepare initial message
         title = self.image_text_extractor.repo_path.split("/")[-1]
+
         # Use absolute path relative to this file's location
         current_dir = Path(__file__).parent
         filename = current_dir / "base_prompt.txt"
-        notion_page_id = os.getenv("NOTION_PAGE_ID")
+
+        if not user_notion_page_id:
+            raise ValueError("No Notion page ID provided.")
+
         base_prompt = Path(filename).read_text()
         filled_prompt = base_prompt.format(
             title=title,
-            notion_page_id=notion_page_id,
+            notion_page_id=user_notion_page_id,
             draft=enhanced_draft
             )
         print(f"\n📝 Prompt sent to LLM for Notion upload:")
         print(f"Title: {title}")
-        print(f"Parent Page ID: {notion_page_id}")
+        print(f"Parent Page ID: {user_notion_page_id}")
         print(f"Draft preview (first 200 chars): {enhanced_draft[:200]}...")
         return [HumanMessage(content=filled_prompt)]
 
     async def write_in_notion(self, messages):
         final_text = []
-        max_iterations = 10  # Prevent infinite loops
+        # Prevent infinite loops
+        max_iterations = 10
         iteration = 0
         consecutive_errors = 0
-        max_consecutive_errors = 5  # Stop if we get 5 errors in a row
+        # Stop if we get 5 errors in a row
+        max_consecutive_errors = 5
 
         while iteration < max_iterations:
             iteration += 1
@@ -220,8 +249,14 @@ class NotesCreator:
 
         return "\n".join(final_text)
 
-    async def connect_notion_to_llm(self):
-        await self.notion_connector.connect_to_server()
+    async def connect_notion_to_llm(self, user_notion_token):
+        """
+        Connect to Notion MCP server and bind available tools to LLM.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token (optional)
+        """
+        await self.notion_connector.connect_to_server(user_notion_token)
         # Fetch available tools from MCP session
         response = await self.notion_connector.session.list_tools()
         functions = []
@@ -233,7 +268,8 @@ class NotesCreator:
             })
 
         # Bind functions to LLM
-        self.llm_with_functions = self.llm.bind(functions=functions)
+        self.llm_with_functions = (self.llm_for_notion_mcp
+                                   .bind(functions=functions))
 
     def get_primary_notes(self):
         query = self.image_text_extractor.extract_text()

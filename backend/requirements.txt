@@ -6,3 +6,10 @@ flask-cors>=4.0.0
 python-dotenv>=1.0.0
 werkzeug>=3.0.0
 gunicorn>=21.2.0
+# OAuth and JWT dependencies
+PyJWT>=2.8.0
+cryptography>=41.0.0
+# Database ORM
+SQLAlchemy>=2.0.0
+# HTTP client for OAuth token exchange
+requests>=2.31.0

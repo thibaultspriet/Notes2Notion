@@ -11,18 +11,19 @@ services:
     environment:
       - BACKEND_PORT=5001
       - FLASK_ENV=development
-      - ACCESS_CODE=${ACCESS_CODE}
+      # OAuth Configuration
+      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
+      - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./src:/app/src
       - /var/run/docker.sock:/var/run/docker.sock  # For MCP Docker access
+      - ./backend/db/data:/app/data  # Persist SQLite database
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
       - dokploy-network
     labels:
@@ -39,12 +40,14 @@ services:
       args:
         - API_HOST=${API_HOST:-localhost}
         - APP_ENV=${APP_ENV:-production}
+        - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+        - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
     container_name: notes2notion-frontend
     expose:
       - "3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_APP_ENV=${APP_ENV:-production}
+      - INTERNAL_API_URL=http://backend:5001
     depends_on:
       - backend
     restart: unless-stopped
