@@ -185,16 +185,17 @@ export default function CameraCapture({ testMode }: CameraCaptureProps) {
     formData.append("photo", capturedBlob, "note.jpg");
     formData.append("test_mode", testMode.toString());
 
-    // Get access code from localStorage
-    const accessCode = localStorage.getItem("notes2notion_access_code");
+    // Get session token from localStorage (OAuth token)
+    const sessionToken = localStorage.getItem("notes2notion_session_token");
 
     try {
       const headers: HeadersInit = {};
-      if (accessCode) {
-        headers["Authorization"] = `Bearer ${accessCode}`;
+      if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
       }
 
-      const response = await fetch(`${apiUrl}/api/upload`, {
+      // Use relative URL to call Next.js API proxy instead of direct backend call
+      const response = await fetch('/api/upload', {
         method: "POST",
         headers,
         body: formData,
@@ -203,9 +204,18 @@ export default function CameraCapture({ testMode }: CameraCaptureProps) {
       const result = await response.json();
 
       if (response.status === 401) {
-        // Unauthorized - clear stored access code and force re-authentication
-        localStorage.removeItem("notes2notion_access_code");
-        showStatus(`❌ Code d'accès invalide. Rechargez la page pour vous reconnecter.`, "error");
+        // Unauthorized - clear stored token and force re-authentication
+        localStorage.removeItem("notes2notion_session_token");
+        localStorage.removeItem("notes2notion_user_info");
+        showStatus(`❌ Session expirée. Rechargez la page pour vous reconnecter.`, "error");
+        return;
+      }
+
+      if (response.status === 400 && result.error === 'No default page configured') {
+        // User hasn't configured page ID
+        showStatus(`❌ Aucune page Notion configurée. Configurez votre page par défaut.`, "error");
+        // Trigger page setup - the parent component will handle this
+        window.location.reload();
         return;
       }
 

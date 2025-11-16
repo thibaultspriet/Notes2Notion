@@ -184,8 +184,14 @@ class MockNotesCreator:
         self.draft_enhancer = draft_enhancer
         self.image_text_extractor = image_text_extractor
 
-    async def notes_creation(self):
-        """Create notes without any LLM calls."""
+    async def notes_creation(self, user_notion_token: str, user_notion_page_id: str):
+        """
+        Create notes without any LLM calls.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token 
+            user_notion_page_id: User's target Notion page ID 
+        """
         print("[TEST MODE] MockNotesCreator - No LLM calls for Notion block creation")
 
         # Get mock content
@@ -195,20 +201,23 @@ class MockNotesCreator:
         workflow = await self.draft_enhancer.create_notes_workflow()
         workflow_result = await workflow.ainvoke({"user_input": query})
 
-        # Connect to Notion MCP server
-        await self.notion_connector.connect_to_server()
+        # Connect to Notion MCP server with user's OAuth token
+        await self.notion_connector.connect_to_server(user_notion_token)
 
         # Prepare data with TEST title and timestamp
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         title = f"TEST - {timestamp}"
-        notion_page_id = os.getenv("NOTION_PAGE_ID")
+
+        if not user_notion_page_id:
+            raise ValueError("No Notion page ID provided")
+
         content = workflow_result["agent_response"]
 
         print(f"[TEST MODE] Creating Notion page with title: {title}")
         print(f"[TEST MODE] Content length: {len(content)} characters")
 
         # Create page directly using MCP tools (no LLM decision)
-        await self._create_notion_page_directly(title, notion_page_id, content)
+        await self._create_notion_page_directly(title, user_notion_page_id, content)
 
         print("[TEST MODE] ✅ Page created successfully!")
 

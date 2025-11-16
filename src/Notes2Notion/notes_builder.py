@@ -125,12 +125,26 @@ class NotesCreator:
         self.image_text_extractor = image_text_extractor
         self.llm_with_functions = None
 
-    async def notes_creation(self):
-        messages = await self.prepare_content()
+    async def notes_creation(self, user_notion_token, user_notion_page_id):
+        """
+        Create notes in Notion from extracted and enhanced text.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token
+            user_notion_page_id: User's target Notion page ID
+        """
+        messages = await self.prepare_content(user_notion_token, user_notion_page_id)
         await self.write_in_notion(messages)
 
-    async def prepare_content(self):
-        await self.connect_notion_to_llm()
+    async def prepare_content(self, user_notion_token, user_notion_page_id):
+        """
+        Prepare content for Notion upload: extract, enhance, and format.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token
+            user_notion_page_id: User's target Notion page ID
+        """
+        await self.connect_notion_to_llm(user_notion_token)
 
         query = self.get_primary_notes()
 
@@ -146,16 +160,19 @@ class NotesCreator:
         # Use absolute path relative to this file's location
         current_dir = Path(__file__).parent
         filename = current_dir / "base_prompt.txt"
-        notion_page_id = os.getenv("NOTION_PAGE_ID")
+
+        if not user_notion_page_id:
+            raise ValueError("No Notion page ID provided.")
+
         base_prompt = Path(filename).read_text()
         filled_prompt = base_prompt.format(
             title=title,
-            notion_page_id=notion_page_id,
+            notion_page_id=user_notion_page_id,
             draft=enhanced_draft
             )
         print(f"\n📝 Prompt sent to LLM for Notion upload:")
         print(f"Title: {title}")
-        print(f"Parent Page ID: {notion_page_id}")
+        print(f"Parent Page ID: {user_notion_page_id}")
         print(f"Draft preview (first 200 chars): {enhanced_draft[:200]}...")
         return [HumanMessage(content=filled_prompt)]
 
@@ -232,8 +249,14 @@ class NotesCreator:
 
         return "\n".join(final_text)
 
-    async def connect_notion_to_llm(self):
-        await self.notion_connector.connect_to_server()
+    async def connect_notion_to_llm(self, user_notion_token):
+        """
+        Connect to Notion MCP server and bind available tools to LLM.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token (optional)
+        """
+        await self.notion_connector.connect_to_server(user_notion_token)
         # Fetch available tools from MCP session
         response = await self.notion_connector.session.list_tools()
         functions = []

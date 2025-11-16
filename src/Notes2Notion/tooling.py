@@ -61,14 +61,21 @@ class McpNotionConnector:
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
 
-    async def connect_to_server(self):
-        notion_token = os.getenv("NOTION_TOKEN")
-        if not notion_token:
+    async def connect_to_server(self, user_notion_token: str):
+        """
+        Connect to Notion MCP server with user-specific token.
+
+        Args:
+            user_notion_token: User's Notion OAuth access token.
+        """
+        # Use provided token or fall back to environment variable (backward compatibility)
+
+        if not user_notion_token:
             raise EnvironmentError(
-                "NOTION_TOKEN environment variable not set.")
+                "No Notion token provided. Either pass user_notion_token parameter")
 
         headers = json.dumps({
-            "Authorization": f"Bearer {notion_token}",
+            "Authorization": f"Bearer {user_notion_token}",
             "Notion-Version": "2022-06-28"
         })
 
