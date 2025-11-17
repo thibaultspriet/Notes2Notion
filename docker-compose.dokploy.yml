@@ -38,8 +38,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - API_HOST=${API_HOST:-localhost}
-        - APP_ENV=${APP_ENV:-production}
+        - API_HOST=${API_HOST}
+        - APP_ENV=${APP_ENV}
         - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
         - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
     container_name: notes2notion-frontend
@@ -48,6 +48,7 @@ services:
     environment:
       - NODE_ENV=production
       - INTERNAL_API_URL=http://backend:5001
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - backend
     restart: unless-stopped

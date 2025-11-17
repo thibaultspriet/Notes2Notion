@@ -14,8 +14,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Accept build arguments (defaults)
-ARG API_HOST=http://localhost:5001
-ARG APP_ENV=production
+ARG API_HOST
+ARG APP_ENV
 ARG NOTION_CLIENT_ID
 ARG NOTION_REDIRECT_URI
 

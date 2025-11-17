@@ -12,6 +12,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // NEXT_PUBLIC_API_URL is for client-side calls only
 const API_URL = process.env.INTERNAL_API_URL;
 
+// Frontend public URL for OAuth redirects
+// Defaults to inferring from request.url if not set (works for localhost)
+const FRONTEND_URL = process.env.FRONTEND_URL;
+
 export async function GET(request: NextRequest) {
   try {
     // Extract authorization code from URL parameters
@@ -61,7 +65,8 @@ export async function GET(request: NextRequest) {
 
     // Create redirect URL with token in URL fragment (will be extracted by client-side JS)
     // We use URL fragment (#) because it's not sent to the server and is more secure
-    const redirectUrl = new URL('/', request.url);
+    const baseUrl = FRONTEND_URL;
+    const redirectUrl = new URL('/', baseUrl);
     redirectUrl.hash = `token=${session_token}&workspace=${encodeURIComponent(workspace_name)}&needs_setup=${needs_page_setup}`;
 
     return NextResponse.redirect(redirectUrl);
