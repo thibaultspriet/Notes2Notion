@@ -8,6 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force dynamic rendering - do not prerender this route at build time
+export const dynamic = 'force-dynamic';
+
 // Use internal Docker service name for server-side API calls
 // NEXT_PUBLIC_API_URL is for client-side calls only
 const API_URL = process.env.INTERNAL_API_URL;
