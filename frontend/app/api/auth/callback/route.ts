@@ -13,11 +13,17 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_URL = process.env.INTERNAL_API_URL;
 
 // Frontend public URL for OAuth redirects
-// Defaults to inferring from request.url if not set (works for localhost)
+// Required environment variable - must be set in production and local environments
 const FRONTEND_URL = process.env.FRONTEND_URL;
 
 export async function GET(request: NextRequest) {
   try {
+    // Validate FRONTEND_URL is set
+    if (!FRONTEND_URL) {
+      console.error('FRONTEND_URL environment variable is not set');
+      throw new Error('FRONTEND_URL environment variable is required');
+    }
+
     // Extract authorization code from URL parameters
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
@@ -27,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('OAuth error:', error);
       return NextResponse.redirect(
-        new URL(`/?error=${encodeURIComponent(error)}`, request.url)
+        new URL(`/?error=${encodeURIComponent(error)}`, FRONTEND_URL)
       );
     }
 
@@ -35,7 +41,7 @@ export async function GET(request: NextRequest) {
     if (!code) {
       console.error('No authorization code received');
       return NextResponse.redirect(
-        new URL('/?error=no_code', request.url)
+        new URL('/?error=no_code', FRONTEND_URL)
       );
     }
 
@@ -54,7 +60,7 @@ export async function GET(request: NextRequest) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       console.error('Token exchange failed:', errorData);
       return NextResponse.redirect(
-        new URL(`/?error=${encodeURIComponent(errorData.error || 'token_exchange_failed')}`, request.url)
+        new URL(`/?error=${encodeURIComponent(errorData.error || 'token_exchange_failed')}`, FRONTEND_URL)
       );
     }
 
@@ -65,15 +71,14 @@ export async function GET(request: NextRequest) {
 
     // Create redirect URL with token in URL fragment (will be extracted by client-side JS)
     // We use URL fragment (#) because it's not sent to the server and is more secure
-    const baseUrl = FRONTEND_URL;
-    const redirectUrl = new URL('/', baseUrl);
+    const redirectUrl = new URL('/', FRONTEND_URL);
     redirectUrl.hash = `token=${session_token}&workspace=${encodeURIComponent(workspace_name)}&needs_setup=${needs_page_setup}`;
 
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
     console.error('OAuth callback error:', error);
     return NextResponse.redirect(
-      new URL('/?error=callback_failed', request.url)
+      new URL('/?error=callback_failed', FRONTEND_URL)
     );
   }
 }
