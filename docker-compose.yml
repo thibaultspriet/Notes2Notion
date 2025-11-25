@@ -1,0 +1,55 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: notes2notion-backend
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    environment:
+      - BACKEND_PORT=5001
+      - FLASK_ENV=development
+      # OAuth Configuration
+      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
+      - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./src:/app/src
+      - /var/run/docker.sock:/var/run/docker.sock  # For MCP Docker access
+      - ./backend/db/data:/app/data  # Persist SQLite database
+    restart: unless-stopped
+    networks:
+      - notes2notion-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - API_HOST=${API_HOST:-localhost}
+        - APP_ENV=${APP_ENV:-production}
+        - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+        - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
+    container_name: notes2notion-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - INTERNAL_API_URL=http://backend:5001
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - notes2notion-network
+
+networks:
+  notes2notion-network:
+    driver: bridge
+  
