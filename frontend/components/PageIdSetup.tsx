@@ -17,7 +17,7 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
     e.preventDefault();
 
     if (!pageId.trim()) {
-      setError('Please enter a Notion page ID');
+      setError('Veuillez entrer un identifiant de page Notion');
       return;
     }
 
@@ -30,10 +30,10 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
       if (success) {
         onComplete();
       } else {
-        setError('Failed to configure page ID. Please check the ID and try again.');
+        setError('Échec de la configuration de l\'identifiant de page. Veuillez vérifier l\'ID et réessayer.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError('Une erreur s\'est produite. Veuillez réessayer.');
     } finally {
       setIsLoading(false);
     }
@@ -44,34 +44,34 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
       <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-8">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Configure Default Page
+            Configurer la page par défaut
           </h2>
           <p className="text-gray-600">
-            Connected to: <span className="font-semibold">{workspaceName}</span>
+            Connecté à : <span className="font-semibold">{workspaceName}</span>
           </p>
         </div>
 
         <div className="mb-6">
           <p className="text-gray-700 mb-4">
-            Please provide the ID of the Notion page where your notes will be created.
+            Veuillez fournir l'identifiant de la page Notion où vos notes seront créées.
           </p>
 
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
             <h3 className="font-semibold text-blue-900 mb-2 text-sm">
-              How to find your Notion Page ID:
+              Comment trouver votre identifiant de page Notion :
             </h3>
             <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-              <li>Open the target page in Notion</li>
-              <li>Click "Share" → "Copy link"</li>
-              <li>The Page ID is the last part of the URL</li>
+              <li>Ouvrez la page cible dans Notion</li>
+              <li>Cliquez sur "Partager" → "Copier le lien"</li>
+              <li>L'identifiant de page est la dernière partie de l'URL</li>
             </ol>
             <div className="mt-3 p-2 bg-white rounded border border-blue-300">
               <p className="text-xs font-mono text-gray-600 break-all">
                 https://notion.so/<span className="bg-yellow-200">abc123def456</span>
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                → Page ID: <span className="font-semibold">abc123def456</span>
+                → Identifiant de page : <span className="font-semibold">abc123def456</span>
               </p>
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
           {/* Page ID Input */}
           <div className="mb-6">
             <label htmlFor="pageId" className="block text-sm font-medium text-gray-700 mb-2">
-              Notion Page ID
+              Identifiant de page Notion
             </label>
             <input
               type="text"
@@ -107,12 +107,12 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
             disabled={isLoading || !pageId.trim()}
             className="w-full bg-black text-white py-3 px-6 rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isLoading ? 'Saving...' : 'Continue'}
+            {isLoading ? 'Enregistrement...' : 'Continuer'}
           </button>
         </form>
 
         <p className="mt-4 text-xs text-gray-500 text-center">
-          You can change this later in your account settings
+          Vous pourrez modifier ceci plus tard dans les paramètres de votre compte
         </p>
       </div>
     </div>

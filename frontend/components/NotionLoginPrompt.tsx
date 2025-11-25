@@ -19,7 +19,7 @@ export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptP
 
     // Validate required environment variables
     if (!NOTION_CLIENT_ID || !REDIRECT_URI) {
-      setError('OAuth configuration is missing. Please check environment variables.');
+      setError('La configuration OAuth est manquante. Veuillez vérifier les variables d\'environnement.');
       setIsLoading(false);
       return;
     }
@@ -62,11 +62,11 @@ export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptP
 
           {/* Title */}
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Connect to Notion
+            Se connecter à Notion
           </h2>
 
           <p className="text-gray-600 mb-6">
-            Sign in with your Notion account to start converting your handwritten notes into Notion pages.
+            Connectez-vous avec votre compte Notion pour commencer à convertir vos notes manuscrites en pages Notion.
           </p>
 
           {/* Error Message */}
@@ -104,7 +104,7 @@ export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptP
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                <span>Redirecting to Notion...</span>
+                <span>Redirection vers Notion...</span>
               </>
             ) : (
               <>
@@ -120,15 +120,15 @@ export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptP
                     d="M61.35 0.227l-55.333 4.087C1.553 4.7 0 7.617 0 11.113v60.66c0 2.724 0.967 5.053 3.3 8.167l13.007 16.913c2.137 2.723 4.08 3.307 8.16 3.113l64.257 -3.89c5.433 -0.387 6.99 -2.917 6.99 -7.193V20.64c0 -2.21 -0.873 -2.847 -3.443 -4.733L74.167 3.143c-4.273 -3.107 -6.02 -3.5 -12.817 -2.917z"
                   />
                 </svg>
-                <span>Login with Notion</span>
+                <span>Se connecter avec Notion</span>
               </>
             )}
           </button>
 
           {/* Info Text */}
           <p className="mt-6 text-xs text-gray-500">
-            By continuing, you'll be redirected to Notion to authorize this application.
-            We'll only access the pages you choose to share.
+            En continuant, vous serez redirigé vers Notion pour autoriser cette application.
+            Nous n'accéderons qu'aux pages que vous choisissez de partager.
           </p>
         </div>
       </div>
