@@ -197,6 +197,140 @@ def get_user_info(current_user):
     }), 200
 
 
+@app.route('/api/notion/search', methods=['POST'])
+@require_oauth
+def search_notion_pages(current_user):
+    """
+    Search Notion pages accessible to the user.
+
+    Expects JSON body with:
+    - query: Search term (optional, returns all pages if empty)
+
+    Returns:
+    - pages: List of pages with id, title, and icon
+    """
+    try:
+        import requests
+
+        data = request.get_json()
+        query = data.get('query', '')
+
+        # Prepare request to Notion API
+        headers = {
+            'Authorization': f'Bearer {current_user.access_token}',
+            'Notion-Version': '2022-06-28',
+            'Content-Type': 'application/json'
+        }
+
+        body = {
+            'filter': {
+                'property': 'object',
+                'value': 'page'
+            }
+        }
+
+        if query:
+            body['query'] = query
+
+        # Call Notion Search API
+        response = requests.post(
+            'https://api.notion.com/v1/search',
+            headers=headers,
+            json=body
+        )
+
+        if not response.ok:
+            print(f"❌ Notion API error: {response.status_code} - {response.text}")
+            return jsonify({
+                'error': 'Failed to search Notion pages',
+                'message': response.text
+            }), response.status_code
+
+        results = response.json()
+
+        # Helper function to normalize Notion IDs (remove dashes for comparison)
+        def normalize_id(notion_id):
+            if not notion_id:
+                return None
+            return notion_id.replace('-', '')
+
+        # Format results to return only necessary information
+        pages = []
+        page_map = {}  # Map of page_id -> page data for parent lookup
+
+        for result in results.get('results', []):
+            if result.get('object') == 'page':
+                # Extract page title
+                title = 'Untitled'
+                properties = result.get('properties', {})
+
+                # Try to get title from various possible properties
+                for prop_name, prop_value in properties.items():
+                    if prop_value.get('type') == 'title':
+                        title_array = prop_value.get('title', [])
+                        if title_array and len(title_array) > 0:
+                            title = title_array[0].get('plain_text', 'Untitled')
+                            break
+
+                # Extract icon if present
+                icon = None
+                if result.get('icon'):
+                    if result['icon'].get('type') == 'emoji':
+                        icon = result['icon'].get('emoji')
+                    elif result['icon'].get('type') == 'external':
+                        icon = result['icon'].get('external', {}).get('url')
+                    elif result['icon'].get('type') == 'file':
+                        icon = result['icon'].get('file', {}).get('url')
+
+                # Extract parent information
+                parent_info = result.get('parent', {})
+                parent_type = parent_info.get('type')
+                parent_id = None
+
+                if parent_type == 'page_id':
+                    parent_id = parent_info.get('page_id')
+                elif parent_type == 'database_id':
+                    parent_id = parent_info.get('database_id')
+
+                page_data = {
+                    'id': result.get('id'),
+                    'title': title,
+                    'icon': icon,
+                    'parent_type': parent_type,
+                    'parent_id': parent_id
+                }
+
+                pages.append(page_data)
+                # Store in map with normalized ID for reliable lookup
+                page_map[normalize_id(result.get('id'))] = page_data
+
+        # Second pass: resolve parent titles for pages whose parent is in the results
+        for page in pages:
+            if page['parent_id']:
+                # Try to find parent using normalized IDs
+                normalized_parent_id = normalize_id(page['parent_id'])
+                if normalized_parent_id in page_map:
+                    page['parent_title'] = page_map[normalized_parent_id]['title']
+                else:
+                    page['parent_title'] = None
+            else:
+                page['parent_title'] = None
+
+        return jsonify({
+            'pages': pages,
+            'has_more': results.get('has_more', False)
+        }), 200
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"\n❌ Error searching Notion pages:")
+        print(error_trace)
+        return jsonify({
+            'error': 'Failed to search pages',
+            'message': str(e)
+        }), 500
+
+
 @app.route('/api/upload', methods=['POST'])
 @require_oauth
 def upload_file(current_user):
@@ -364,6 +498,7 @@ if __name__ == '__main__':
     print(f"  - POST http://localhost:{port}/api/oauth/callback")
     print(f"  - GET  http://localhost:{port}/api/user/info")
     print(f"  - POST http://localhost:{port}/api/user/page-id")
+    print(f"  - POST http://localhost:{port}/api/notion/search")
     print(f"  - POST http://localhost:{port}/api/upload")
     print(f"\nAuthentication:")
     print(f"  - Method: OAuth 2.0 (Notion)")
