@@ -158,11 +158,14 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
       const success = await updatePageId(selectedPage.id);
 
       if (success) {
+        // Give backend a moment to persist the change before proceeding
+        await new Promise(resolve => setTimeout(resolve, 500));
         onComplete();
       } else {
         setError('Échec de la configuration de la page. Veuillez réessayer.');
       }
     } catch (err) {
+      console.error('Error in handleSubmit:', err);
       setError('Une erreur s\'est produite. Veuillez réessayer.');
     } finally {
       setIsSubmitting(false);
@@ -233,8 +236,39 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
             {isDropdownOpen && !isLoadingPages && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
                 {filteredPages.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                    Aucune page trouvée
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-gray-600 mb-3">
+                      {searchQuery ? 'Aucune page trouvée' : 'Aucune page accessible'}
+                    </p>
+                    {!searchQuery && pages.length === 0 && (
+                      <div className="text-xs text-gray-500">
+                        <p className="mb-3">
+                          Vous n'avez partagé aucune page avec Notes2Notion lors de la connexion.
+                        </p>
+                        <button
+                          onClick={() => {
+                            const clientId = process.env.NEXT_PUBLIC_NOTION_CLIENT_ID;
+                            const redirectUri = process.env.NEXT_PUBLIC_NOTION_REDIRECT_URI;
+
+                            if (clientId && redirectUri) {
+                              const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
+                              authUrl.searchParams.set('client_id', clientId);
+                              authUrl.searchParams.set('response_type', 'code');
+                              authUrl.searchParams.set('owner', 'user');
+                              authUrl.searchParams.set('redirect_uri', redirectUri);
+
+                              window.location.href = authUrl.toString();
+                            }
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                          Partager une page avec Notes2Notion
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   filteredPages.map((page) => {

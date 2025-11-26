@@ -74,9 +74,13 @@ export function isAuthenticated(): boolean {
  */
 export async function fetchAndStoreUserInfo(): Promise<UserInfo | null> {
   const token = getToken();
-  if (!token) return null;
+  if (!token) {
+    console.log('fetchAndStoreUserInfo: No token found');
+    return null;
+  }
 
   try {
+    console.log('fetchAndStoreUserInfo: Fetching user info...');
     // Use relative URL to call Next.js API proxy instead of direct backend call
     const response = await fetch('/api/user/info', {
       headers: {
@@ -84,15 +88,19 @@ export async function fetchAndStoreUserInfo(): Promise<UserInfo | null> {
       },
     });
 
+    console.log('fetchAndStoreUserInfo: Response status:', response.status);
+
     if (!response.ok) {
       // Token is invalid or expired
       if (response.status === 401) {
+        console.log('fetchAndStoreUserInfo: Unauthorized, clearing token');
         clearToken();
       }
       return null;
     }
 
     const userInfo: UserInfo = await response.json();
+    console.log('fetchAndStoreUserInfo: User info received:', userInfo);
     setUserInfo(userInfo);
     return userInfo;
   } catch (error) {
@@ -106,9 +114,13 @@ export async function fetchAndStoreUserInfo(): Promise<UserInfo | null> {
  */
 export async function updatePageId(pageId: string): Promise<boolean> {
   const token = getToken();
-  if (!token) return false;
+  if (!token) {
+    console.log('updatePageId: No token found');
+    return false;
+  }
 
   try {
+    console.log('updatePageId: Updating page ID to:', pageId);
     // Use relative URL to call Next.js API proxy instead of direct backend call
     const response = await fetch('/api/user/page-id', {
       method: 'POST',
@@ -119,11 +131,19 @@ export async function updatePageId(pageId: string): Promise<boolean> {
       body: JSON.stringify({ page_id: pageId }),
     });
 
+    console.log('updatePageId: Response status:', response.status);
+
     if (!response.ok) {
+      const errorData = await response.json();
+      console.error('updatePageId: Failed with error:', errorData);
       return false;
     }
 
+    const result = await response.json();
+    console.log('updatePageId: Success:', result);
+
     // Refresh user info after updating page ID
+    console.log('updatePageId: Refreshing user info...');
     await fetchAndStoreUserInfo();
     return true;
   } catch (error) {
