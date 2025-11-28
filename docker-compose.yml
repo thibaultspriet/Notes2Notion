@@ -1,4 +1,37 @@
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: notes2notion-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-notes2notion}
+      - MYSQL_USER=${MYSQL_USER:-notes2notion}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-notes2notion}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone='+00:00'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - notes2notion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer
+    container_name: notes2notion-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - notes2notion-network
+    restart: unless-stopped
+    depends_on:
+      - mysql
+
   backend:
     build:
       context: .
@@ -16,16 +49,18 @@ services:
       - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
       - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
       - JWT_SECRET=${JWT_SECRET}
-      # Database
-      - DATABASE_URL=${DATABASE_URL}
+      # Database - MySQL configuration
+      - DATABASE_URL=mysql+pymysql://notes2notion:notes2notion@mysql:3306/notes2notion?charset=utf8mb4
     volumes:
       - ./backend/uploads:/app/uploads
       - ./src:/app/src
       - /var/run/docker.sock:/var/run/docker.sock  # For MCP Docker access
-      - ./backend/db/data:/app/data  # Persist SQLite database
     restart: unless-stopped
     networks:
       - notes2notion-network
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   frontend:
     build:
@@ -52,4 +87,7 @@ services:
 networks:
   notes2notion-network:
     driver: bridge
-  
+
+volumes:
+  mysql_data:
+    driver: local

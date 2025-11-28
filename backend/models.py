@@ -48,12 +48,18 @@ class User(Base):
 # Database setup
 def get_database_url():
     """
-    Get database URL from environment variable or use default SQLite.
+    Get database URL from environment variable.
 
     Returns:
         str: Database connection URL
+
+    Raises:
+        ValueError: If DATABASE_URL is not set
     """
-    return os.getenv('DATABASE_URL')
+    url = os.getenv('DATABASE_URL')
+    if not url:
+        raise ValueError("DATABASE_URL environment variable is required")
+    return url
 
 
 def init_db():
@@ -61,8 +67,16 @@ def init_db():
     Initialize the database by creating all tables.
 
     This function should be called when the application starts.
+    Includes connection pooling configuration for MySQL production use.
     """
-    engine = create_engine(get_database_url(), echo=False)
+    engine = create_engine(
+        get_database_url(),
+        echo=False,
+        pool_pre_ping=True,      # Verify connections before using
+        pool_recycle=3600,       # Recycle connections after 1 hour
+        pool_size=5,             # Connection pool size
+        max_overflow=10          # Maximum overflow connections
+    )
     Base.metadata.create_all(engine)
     return engine
 
@@ -74,7 +88,14 @@ def get_session():
     Returns:
         Session: SQLAlchemy session object
     """
-    engine = create_engine(get_database_url(), echo=False)
+    engine = create_engine(
+        get_database_url(),
+        echo=False,
+        pool_pre_ping=True,      # Verify connections before using
+        pool_recycle=3600,       # Recycle connections after 1 hour
+        pool_size=5,             # Connection pool size
+        max_overflow=10          # Maximum overflow connections
+    )
     Session = sessionmaker(bind=engine)
     return Session()
 

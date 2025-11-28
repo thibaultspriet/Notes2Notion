@@ -17,12 +17,13 @@ services:
       - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
       - JWT_SECRET=${JWT_SECRET}
       # Database
+      # DATABASE_URL should be set in Dokploy UI to point to Dokploy's MySQL service
+      # Format: mysql+pymysql://{user}:{password}@{mysql-service}:3306/notes2notion?charset=utf8mb4
       - DATABASE_URL=${DATABASE_URL}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./src:/app/src
       - /var/run/docker.sock:/var/run/docker.sock  # For MCP Docker access
-      - ./backend/db/data:/app/data  # Persist SQLite database
     restart: unless-stopped
     networks:
       - dokploy-network

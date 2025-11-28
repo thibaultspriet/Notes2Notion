@@ -17,6 +17,10 @@ COPY backend/app.py .
 COPY backend/oauth.py .
 COPY backend/models.py .
 
+# Copy Alembic configuration
+COPY backend/alembic.ini .
+COPY backend/alembic ./alembic
+
 # Copy source code from parent directory
 COPY src /app/src
 
