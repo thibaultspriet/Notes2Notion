@@ -24,12 +24,21 @@ export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptP
       return;
     }
 
+    // NEW: Get stored license key
+    const storedLicense = localStorage.getItem("notes2notion_license_key");
+
     // Build Notion OAuth authorization URL
     const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
     authUrl.searchParams.set('client_id', NOTION_CLIENT_ID);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('owner', 'user');
     authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+
+    // NEW: Encode license in state parameter
+    if (storedLicense) {
+      const state = btoa(JSON.stringify({ license: storedLicense }));
+      authUrl.searchParams.set('state', state);
+    }
 
     // Redirect to Notion OAuth page
     window.location.href = authUrl.toString();

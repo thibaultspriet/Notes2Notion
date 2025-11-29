@@ -7,6 +7,7 @@
 
 const TOKEN_KEY = 'notes2notion_session_token';
 const USER_INFO_KEY = 'notes2notion_user_info';
+const LICENSE_KEY = 'notes2notion_license_key';
 
 export interface UserInfo {
   workspace_name: string;
@@ -153,8 +154,40 @@ export async function updatePageId(pageId: string): Promise<boolean> {
 }
 
 /**
- * Logout: clear all stored auth data
+ * Get stored license key
+ */
+export function getLicenseKey(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(LICENSE_KEY);
+}
+
+/**
+ * Store license key
+ */
+export function setLicenseKey(licenseKey: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(LICENSE_KEY, licenseKey.trim().toUpperCase());
+}
+
+/**
+ * Clear license key
+ */
+export function clearLicenseKey(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(LICENSE_KEY);
+}
+
+/**
+ * Check if user has valid license
+ */
+export function hasLicense(): boolean {
+  return getLicenseKey() !== null;
+}
+
+/**
+ * Logout: clear all stored auth data (token + license)
  */
 export function logout(): void {
   clearToken();
+  clearLicenseKey();
 }

@@ -24,13 +24,13 @@ from Notes2Notion.mock_components import (MockImageTextExtractor, MockDraftEnhan
 
 # Import OAuth and database modules
 from oauth import require_oauth, handle_oauth_callback
-from models import init_db, update_user_notion_page
+from models import run_migrations, update_user_notion_page, validate_license_key
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Next.js frontend
 
-# Initialize database
-init_db()
+# Initialize database and run migrations
+run_migrations()
 
 # Configuration
 UPLOAD_FOLDER = Path(__file__).parent / "uploads"
@@ -105,6 +105,42 @@ def health_check():
     })
 
 
+@app.route('/api/license/validate', methods=['POST'])
+def validate_license():
+    """
+    Validate a license key without activating it.
+
+    This endpoint checks if a license key is valid and available for use.
+
+    Expects JSON body with:
+    - license_key: License key to validate
+
+    Returns:
+    - valid: Boolean (true only if key is valid AND available)
+    - message: User-friendly message in French
+    """
+    try:
+        data = request.get_json()
+        license_key = data.get('license_key')
+
+        if not license_key:
+            return jsonify({'valid': False, 'message': 'Clé de licence requise'}), 400
+
+        result = validate_license_key(license_key)
+
+        # For frontend, we only care if key is valid AND not used
+        if result['valid'] and not result['is_used']:
+            return jsonify({'valid': True, 'message': 'Clé de licence valide'}), 200
+        else:
+            return jsonify({'valid': False, 'message': result['message']}), 200
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"\n❌ License validation error:")
+        print(error_trace)
+        return jsonify({'valid': False, 'message': 'Erreur de validation'}), 500
+
+
 @app.route('/api/oauth/callback', methods=['POST'])
 def oauth_callback():
     """
@@ -112,6 +148,7 @@ def oauth_callback():
 
     Expects JSON body with:
     - code: Authorization code from Notion
+    - license_key: (Optional) License key to activate for the user
 
     Returns:
     - session_token: JWT token for subsequent requests
@@ -121,12 +158,14 @@ def oauth_callback():
     try:
         data = request.get_json()
         code = data.get('code')
+        license_key = data.get('license_key')  # NEW: Get license key from request
 
         if not code:
             return jsonify({'error': 'Missing authorization code'}), 400
 
         # Handle OAuth flow: exchange code for token, store user, create session
-        result = handle_oauth_callback(code)
+        # Pass license_key to activate it for the new/existing user
+        result = handle_oauth_callback(code, license_key)
 
         return jsonify(result), 200
 

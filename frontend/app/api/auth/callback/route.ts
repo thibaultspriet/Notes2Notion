@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     // Extract authorization code from URL parameters
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
+    const state = searchParams.get('state');  // NEW: Get state parameter
     const error = searchParams.get('error');
 
     // Check if user denied authorization
@@ -48,15 +49,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // NEW: Decode license key from state parameter
+    let licenseKey = null;
+    if (state) {
+      try {
+        const decoded = JSON.parse(atob(state));
+        licenseKey = decoded.license;
+        console.log('License key found in OAuth state');
+      } catch (e) {
+        console.error('Failed to decode state:', e);
+      }
+    }
+
     console.log('Received OAuth code, exchanging for token...');
 
     // Exchange authorization code for session token
+    // NEW: Include license_key in the request
     const response = await fetch(`${API_URL}/api/oauth/callback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({
+        code,
+        license_key: licenseKey  // NEW: Pass license key to backend
+      }),
     });
 
     if (!response.ok) {

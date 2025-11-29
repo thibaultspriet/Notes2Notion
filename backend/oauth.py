@@ -148,11 +148,12 @@ def get_current_user_from_token(token: str):
 
 def require_oauth(f):
     """
-    Decorator to protect Flask routes with OAuth authentication.
+    Decorator to protect Flask routes with OAuth + License authentication.
 
-    This decorator replaces the old @require_access_code decorator.
-    It validates the JWT session token from the Authorization header,
-    retrieves the user from the database, and injects it into the route.
+    This decorator validates:
+    1. JWT session token from the Authorization header
+    2. User exists in database
+    3. User has a valid, active license key
 
     Usage:
         @app.route('/api/protected')
@@ -180,6 +181,23 @@ def require_oauth(f):
         if not current_user:
             return jsonify({'error': 'Invalid or expired token'}), 401
 
+        # NEW: Check user has valid license
+        from models import get_session, LicenseKey
+        session = get_session()
+        try:
+            license_obj = session.query(LicenseKey).filter_by(
+                used_by_user_id=current_user.id,
+                is_active=True
+            ).first()
+
+            if not license_obj:
+                return jsonify({
+                    'error': 'No valid license',
+                    'message': 'Votre licence est invalide ou a été révoquée'
+                }), 403  # 403 Forbidden (authenticated but not authorized)
+        finally:
+            session.close()
+
         # Inject current_user into the route function
         kwargs['current_user'] = current_user
         return f(*args, **kwargs)
@@ -187,18 +205,20 @@ def require_oauth(f):
     return decorated_function
 
 
-def handle_oauth_callback(code: str) -> Dict[str, Any]:
+def handle_oauth_callback(code: str, license_key: str = None) -> Dict[str, Any]:
     """
-    Complete OAuth flow: exchange code, store user, return session token.
+    Complete OAuth flow: exchange code, store user, activate license, return session token.
 
     This is the main function called by the OAuth callback endpoint.
     It orchestrates the entire OAuth flow:
     1. Exchange authorization code for Notion tokens
     2. Store/update user in database
-    3. Create session token for frontend
+    3. Activate license key if provided
+    4. Create session token for frontend
 
     Args:
         code: Authorization code from Notion OAuth redirect
+        license_key: (Optional) License key to activate for this user
 
     Returns:
         dict: Response containing:
@@ -228,6 +248,28 @@ def handle_oauth_callback(code: str) -> Dict[str, Any]:
         workspace_name=workspace_name,
         refresh_token=refresh_token
     )
+
+    # NEW: Activate license key if provided
+    if license_key:
+        try:
+            # Import here to avoid circular dependency
+            from models import activate_license_key, get_session, LicenseKey
+
+            # Check if user already has a license
+            session = get_session()
+            existing_license = session.query(LicenseKey).filter_by(
+                used_by_user_id=user.id
+            ).first()
+            session.close()
+
+            if not existing_license:
+                activate_license_key(license_key, user.id)
+                print(f"✅ License key activated for user {user.id}")
+            else:
+                print(f"ℹ️  User {user.id} already has license: {existing_license.key}")
+        except Exception as e:
+            print(f"⚠️  License activation failed: {e}")
+            # Continue anyway - license check will happen on protected routes
 
     # Create session token for frontend
     session_token = create_session_token(bot_id)

@@ -5,6 +5,7 @@ import CameraCapture from "@/components/CameraCapture";
 import RefreshHandler from "@/components/RefreshHandler";
 import NotionLoginPrompt from "@/components/NotionLoginPrompt";
 import PageIdSetup from "@/components/PageIdSetup";
+import LicenseKeyPrompt from "@/components/LicenseKeyPrompt";
 import {
   isAuthenticated,
   setToken,
@@ -22,10 +23,23 @@ export default function Home() {
   const [needsPageSetup, setNeedsPageSetup] = useState(false);
   const [workspaceName, setWorkspaceName] = useState<string>("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [hasValidLicense, setHasValidLicense] = useState(false);
 
   // Check authentication and handle OAuth callback
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkLicenseAndAuth = async () => {
+      // STEP 1: Check license FIRST
+      const storedLicense = localStorage.getItem('notes2notion_license_key');
+      if (!storedLicense) {
+        setHasValidLicense(false);
+        setIsCheckingAuth(false);
+        return; // Stop here - show license prompt
+      }
+
+      // License exists
+      setHasValidLicense(true);
+
+      // STEP 2: Continue with existing OAuth check
       // Check if we have a redirect from OAuth callback (token in URL hash)
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
@@ -85,7 +99,7 @@ export default function Home() {
       setIsCheckingAuth(false);
     };
 
-    checkAuth();
+    checkLicenseAndAuth();
   }, []);
 
   const handleRefresh = () => {
@@ -105,6 +119,10 @@ export default function Home() {
     }
   };
 
+  const handleLicenseValidated = () => {
+    setHasValidLicense(true);
+  };
+
   const handleLogout = () => {
     logout();
     setHasAccess(false);
@@ -122,6 +140,11 @@ export default function Home() {
         </div>
       </main>
     );
+  }
+
+  // NEW: Show license prompt if no valid license
+  if (!hasValidLicense) {
+    return <LicenseKeyPrompt onLicenseValidated={handleLicenseValidated} />;
   }
 
   // Show page setup if needed
