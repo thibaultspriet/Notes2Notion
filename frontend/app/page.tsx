@@ -24,10 +24,20 @@ export default function Home() {
   const [workspaceName, setWorkspaceName] = useState<string>("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hasValidLicense, setHasValidLicense] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   // Check authentication and handle OAuth callback
   useEffect(() => {
     const checkLicenseAndAuth = async () => {
+      // Check for OAuth error in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const errorParam = urlParams.get('error');
+      if (errorParam) {
+        setOauthError(decodeURIComponent(errorParam));
+        // Clear error from URL
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+
       // STEP 1: Check license FIRST
       const storedLicense = localStorage.getItem('notes2notion_license_key');
       if (!storedLicense) {
@@ -159,7 +169,7 @@ export default function Home() {
 
   // Show login prompt if not authenticated
   if (!hasAccess) {
-    return <NotionLoginPrompt onLoginSuccess={handleLoginSuccess} />;
+    return <NotionLoginPrompt onLoginSuccess={handleLoginSuccess} errorMessage={oauthError} />;
   }
 
   // Show main application

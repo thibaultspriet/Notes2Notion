@@ -79,8 +79,10 @@ export async function GET(request: NextRequest) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       console.error('Token exchange failed:', errorData);
+      // Use message if available, otherwise use error field
+      const errorMessage = errorData.message || errorData.error || 'OAuth authentication failed';
       return NextResponse.redirect(
-        new URL(`/?error=${encodeURIComponent(errorData.error || 'token_exchange_failed')}`, FRONTEND_URL)
+        new URL(`/?error=${encodeURIComponent(errorMessage)}`, FRONTEND_URL)
       );
     }
 

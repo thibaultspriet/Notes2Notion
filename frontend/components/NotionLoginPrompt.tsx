@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface NotionLoginPromptProps {
   onLoginSuccess: () => void;
+  errorMessage?: string | null;
 }
 
 const NOTION_CLIENT_ID = process.env.NEXT_PUBLIC_NOTION_CLIENT_ID;
 const REDIRECT_URI = process.env.NEXT_PUBLIC_NOTION_REDIRECT_URI;
 
-export default function NotionLoginPrompt({ onLoginSuccess }: NotionLoginPromptProps) {
+export default function NotionLoginPrompt({ onLoginSuccess, errorMessage }: NotionLoginPromptProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(errorMessage || null);
+
+  // Update error when errorMessage prop changes
+  useEffect(() => {
+    if (errorMessage) {
+      setError(errorMessage);
+    }
+  }, [errorMessage]);
 
   const handleLogin = () => {
     setIsLoading(true);

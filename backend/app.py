@@ -128,9 +128,15 @@ def validate_license():
 
         result = validate_license_key(license_key)
 
-        # For frontend, we only care if key is valid AND not used
-        if result['valid'] and not result['is_used']:
-            return jsonify({'valid': True, 'message': 'Clé de licence valide'}), 200
+        # Accept both unused keys and keys that are already in use
+        # The OAuth callback will verify if the user owns this key
+        if result['valid']:
+            message = 'Clé de licence valide' if not result['is_used'] else 'Reconnexion avec votre clé'
+            return jsonify({
+                'valid': True,
+                'message': message,
+                'is_used': result['is_used']
+            }), 200
         else:
             return jsonify({'valid': False, 'message': result['message']}), 200
 

@@ -255,21 +255,41 @@ def handle_oauth_callback(code: str, license_key: str = None) -> Dict[str, Any]:
             # Import here to avoid circular dependency
             from models import activate_license_key, get_session, LicenseKey
 
-            # Check if user already has a license
             session = get_session()
-            existing_license = session.query(LicenseKey).filter_by(
-                used_by_user_id=user.id
-            ).first()
-            session.close()
 
-            if not existing_license:
-                activate_license_key(license_key, user.id)
-                print(f"✅ License key activated for user {user.id}")
+            # Normalize the provided license key
+            normalized_key = license_key.strip().upper()
+
+            # Check if this specific license key is already used
+            license_obj = session.query(LicenseKey).filter_by(key=normalized_key).first()
+
+            if not license_obj:
+                session.close()
+                raise ValueError(f"License key not found: {normalized_key}")
+
+            if not license_obj.is_active:
+                session.close()
+                raise ValueError("License key has been revoked")
+
+            # Check if license is already used
+            if license_obj.used_by_user_id is not None:
+                # License is already used - verify it belongs to THIS user
+                if license_obj.used_by_user_id == user.id:
+                    print(f"✅ User {user.id} reconnecting with their own license: {normalized_key}")
+                    session.close()
+                else:
+                    # License belongs to a different user - REJECT
+                    session.close()
+                    raise ValueError("Cette clé de licence est déjà utilisée par un autre utilisateur")
             else:
-                print(f"ℹ️  User {user.id} already has license: {existing_license.key}")
+                # License is available - activate it for this user
+                session.close()
+                activate_license_key(normalized_key, user.id)
+                print(f"✅ License key activated for new user {user.id}")
+
         except Exception as e:
             print(f"⚠️  License activation failed: {e}")
-            # Continue anyway - license check will happen on protected routes
+            raise  # Re-raise to return error to frontend
 
     # Create session token for frontend
     session_token = create_session_token(bot_id)
