@@ -71,12 +71,11 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
+    from sqlalchemy import create_engine
 
-    connectable = engine_from_config(
-        configuration,
-        prefix="sqlalchemy.",
+    # Create engine directly from URL to avoid config parsing issues
+    connectable = create_engine(
+        get_url(),
         poolclass=pool.NullPool,
     )
 
