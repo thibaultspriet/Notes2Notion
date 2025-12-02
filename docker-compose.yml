@@ -21,17 +21,6 @@ services:
       timeout: 5s
       retries: 5
 
-  adminer:
-    image: adminer
-    container_name: notes2notion-adminer
-    ports:
-      - "8080:8080"
-    networks:
-      - notes2notion-network
-    restart: unless-stopped
-    depends_on:
-      - mysql
-
   backend:
     build:
       context: .
