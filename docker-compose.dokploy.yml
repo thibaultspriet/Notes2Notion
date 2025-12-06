@@ -1,0 +1,67 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: notes2notion-backend
+    expose:
+      - "5001"
+    env_file:
+      - .env
+    environment:
+      - BACKEND_PORT=5001
+      - FLASK_ENV=development
+      # OAuth Configuration
+      - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+      - NOTION_CLIENT_SECRET=${NOTION_CLIENT_SECRET}
+      - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      # Database
+      # DATABASE_URL should be set in Dokploy UI to point to Dokploy's MySQL service
+      # Format: mysql+pymysql://{user}:{password}@{mysql-service}:3306/notes2notion?charset=utf8mb4
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./src:/app/src
+      - /var/run/docker.sock:/var/run/docker.sock  # For MCP Docker access
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.rule=Host(`n2n-api.thibaultspriet.fr`)"
+      - "traefik.http.routers.backend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=5001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - API_HOST=${API_HOST}
+        - APP_ENV=${APP_ENV}
+        - NOTION_CLIENT_ID=${NOTION_CLIENT_ID}
+        - NOTION_REDIRECT_URI=${NOTION_REDIRECT_URI}
+    container_name: notes2notion-frontend
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - INTERNAL_API_URL=http://backend:5001
+      - FRONTEND_URL=${FRONTEND_URL}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.rule=Host(`n2n.thibaultspriet.fr`)"
+      - "traefik.http.routers.frontend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+
+networks:
+  dokploy-network:
+    external: true
