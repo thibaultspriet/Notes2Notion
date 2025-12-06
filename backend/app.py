@@ -199,30 +199,15 @@ def set_page_id(current_user):
     Returns:
     - success: Boolean indicating if update succeeded
     """
-    print(f"\n📝 POST /api/user/page-id for bot_id: {current_user.bot_id}")
     try:
         data = request.get_json()
         page_id = data.get('page_id')
-        print(f"   Received page_id: {page_id}")
 
         if not page_id:
-            print(f"   ❌ Missing page_id in request body")
             return jsonify({'error': 'Missing page_id'}), 400
 
         # Update user's default page ID
-        print(f"   Calling update_user_notion_page...")
-        result = update_user_notion_page(current_user.bot_id, page_id)
-        print(f"   Update result: {result}")
-
-        # Verify the update worked
-        from models import get_session, User
-        session = get_session()
-        try:
-            fresh_user = session.query(User).filter_by(bot_id=current_user.bot_id).first()
-            if fresh_user:
-                print(f"   Verification - notion_page_id in DB: {fresh_user.notion_page_id}")
-        finally:
-            session.close()
+        update_user_notion_page(current_user.bot_id, page_id)
 
         return jsonify({
             'success': True,
@@ -231,7 +216,7 @@ def set_page_id(current_user):
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        print(f"\n❌ Error updating page ID:")
+        print(f"❌ Error updating page ID for {current_user.bot_id}:")
         print(error_trace)
         return jsonify({
             'error': 'Failed to update page ID',
@@ -250,39 +235,24 @@ def get_user_info(current_user):
     - has_page_id: Whether user has configured a default page
     - bot_id: User identifier
     """
-    # DEBUG: Log to see what's happening
-    print(f"\n🔍 GET /api/user/info for bot_id: {current_user.bot_id}")
-    print(f"   current_user.id (primary key): {current_user.id}")
-    print(f"   notion_page_id in current_user object: {current_user.notion_page_id}")
-    print(f"   has_page_id calculated: {current_user.notion_page_id is not None}")
-
     # Force a fresh query to avoid detached session issues
-    from models import get_session
+    from models import get_session, User
     session = get_session()
     try:
-        from models import User
-        # Query ALL users with this bot_id to check for duplicates
-        all_matching_users = session.query(User).filter_by(bot_id=current_user.bot_id).all()
-        print(f"   Found {len(all_matching_users)} user(s) with this bot_id")
-        for idx, u in enumerate(all_matching_users):
-            print(f"     User {idx+1}: id={u.id}, notion_page_id={u.notion_page_id}")
-
         fresh_user = session.query(User).filter_by(bot_id=current_user.bot_id).first()
         if fresh_user:
-            print(f"   Fresh DB query - user.id: {fresh_user.id}, notion_page_id: {fresh_user.notion_page_id}")
             result = {
                 'workspace_name': fresh_user.workspace_name,
                 'has_page_id': fresh_user.notion_page_id is not None,
                 'bot_id': fresh_user.bot_id
             }
         else:
-            print(f"   ⚠️  No user found in fresh query!")
+            # Fallback to current_user if fresh query fails
             result = {
                 'workspace_name': current_user.workspace_name,
                 'has_page_id': current_user.notion_page_id is not None,
                 'bot_id': current_user.bot_id
             }
-        print(f"   Returning: {result}\n")
         return jsonify(result), 200
     finally:
         session.close()
