@@ -256,17 +256,12 @@ def search_notion_pages(current_user):
     """
     try:
         import requests
+        from oauth import refresh_notion_token
 
         data = request.get_json()
         query = data.get('query', '')
 
-        # Prepare request to Notion API
-        headers = {
-            'Authorization': f'Bearer {current_user.access_token}',
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json'
-        }
-
+        # Prepare request body
         body = {
             'filter': {
                 'property': 'object',
@@ -277,14 +272,45 @@ def search_notion_pages(current_user):
         if query:
             body['query'] = query
 
-        # Call Notion Search API
-        response = requests.post(
-            'https://api.notion.com/v1/search',
-            headers=headers,
-            json=body
-        )
+        # Try with current token first
+        access_token = current_user.access_token
+        max_retries = 1
 
-        if not response.ok:
+        for attempt in range(max_retries + 1):
+            # Prepare request to Notion API
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'Notion-Version': '2022-06-28',
+                'Content-Type': 'application/json'
+            }
+
+            # Call Notion Search API
+            response = requests.post(
+                'https://api.notion.com/v1/search',
+                headers=headers,
+                json=body
+            )
+
+            # If successful, break the loop
+            if response.ok:
+                break
+
+            # If 401 Unauthorized and we haven't retried yet, refresh token
+            if response.status_code == 401 and attempt < max_retries:
+                print(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
+                try:
+                    token_data = refresh_notion_token(current_user)
+                    access_token = token_data['access_token']
+                    print(f"✅ Token refreshed, retrying request...")
+                    continue
+                except Exception as refresh_error:
+                    print(f"❌ Token refresh failed: {refresh_error}")
+                    return jsonify({
+                        'error': 'Authentication failed',
+                        'message': 'Votre session Notion a expiré et n\'a pas pu être renouvelée. Veuillez vous reconnecter.'
+                    }), 401
+
+            # If we get here, the request failed and we can't retry
             print(f"❌ Notion API error: {response.status_code} - {response.text}")
             return jsonify({
                 'error': 'Failed to search Notion pages',
@@ -389,6 +415,9 @@ def upload_file(current_user):
     - photo: The image file
     - test_mode: 'true' or 'false' (optional, default: false)
     """
+    import requests
+    from oauth import refresh_notion_token
+
     # Check if user has configured a default page ID
     if not current_user.notion_page_id:
         return jsonify({
@@ -423,6 +452,47 @@ def upload_file(current_user):
         filepath = user_upload_folder / filename
         file.save(filepath)
 
+        # VALIDATE TOKEN BEFORE PROCESSING
+        # Make a simple API call to verify the token is valid
+        print(f"\n🔐 Validating Notion token...")
+        access_token = current_user.access_token
+
+        validation_headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Notion-Version': '2022-06-28',
+            'Content-Type': 'application/json'
+        }
+
+        # Simple validation call to Notion API (get user info)
+        validation_response = requests.get(
+            'https://api.notion.com/v1/users/me',
+            headers=validation_headers
+        )
+
+        # If token is invalid, try to refresh it
+        if validation_response.status_code == 401:
+            print(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
+            try:
+                token_data = refresh_notion_token(current_user)
+                access_token = token_data['access_token']
+                print(f"✅ Token refreshed successfully")
+            except Exception as refresh_error:
+                print(f"❌ Token refresh failed: {refresh_error}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Authentication failed',
+                    'message': 'Votre session Notion a expiré et n\'a pas pu être renouvelée. Veuillez vous reconnecter.'
+                }), 401
+        elif not validation_response.ok:
+            print(f"❌ Token validation failed with status {validation_response.status_code}")
+            return jsonify({
+                'success': False,
+                'error': 'Token validation failed',
+                'message': f'Erreur de validation du token Notion: {validation_response.text}'
+            }), 500
+
+        print(f"✅ Token is valid")
+
         # Process the image and upload to Notion
         try:
             print(f"\n{'='*60}")
@@ -436,7 +506,7 @@ def upload_file(current_user):
                 process_and_upload(
                     str(user_upload_folder),
                     test_mode,
-                    current_user.access_token,
+                    access_token,  # Use validated/refreshed token
                     current_user.notion_page_id
                 )
             )

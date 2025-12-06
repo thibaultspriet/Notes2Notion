@@ -204,10 +204,20 @@ export default function CameraCapture({ testMode }: CameraCaptureProps) {
       const result = await response.json();
 
       if (response.status === 401) {
-        // Unauthorized - clear stored token and force re-authentication
-        localStorage.removeItem("notes2notion_session_token");
-        localStorage.removeItem("notes2notion_user_info");
-        showStatus(`❌ Session expirée. Rechargez la page pour vous reconnecter.`, "error");
+        // Unauthorized - could be expired session or failed token refresh
+        // The backend message will tell us which one
+        const errorMessage = result.message || "Session expirée. Rechargez la page pour vous reconnecter.";
+        showStatus(`❌ ${errorMessage}`, "error");
+
+        // Only clear token and force reload if it's an auth failure
+        // (token refresh failed means the refresh_token is also invalid)
+        if (result.error === 'Authentication failed') {
+          localStorage.removeItem("notes2notion_session_token");
+          localStorage.removeItem("notes2notion_user_info");
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+        }
         return;
       }
 
@@ -228,7 +238,9 @@ export default function CameraCapture({ testMode }: CameraCaptureProps) {
           retakePhoto();
         }, 3000);
       } else {
-        showStatus(`❌ Erreur: ${result.error}`, "error");
+        // Display backend error message if available, otherwise use generic error
+        const errorMessage = result.message || result.error || "Erreur inconnue";
+        showStatus(`❌ ${errorMessage}`, "error");
       }
     } catch (err) {
       showStatus(`❌ Erreur réseau: ${err instanceof Error ? err.message : "Unknown error"}`, "error");

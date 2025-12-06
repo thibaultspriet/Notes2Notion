@@ -28,16 +28,20 @@ export async function POST(request: NextRequest) {
       body: formData,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    // Try to parse as JSON first (backend returns JSON for both success and error)
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      // If JSON parsing fails, return a generic error
       return NextResponse.json(
-        { error: errorText || 'Upload failed' },
-        { status: response.status }
+        { success: false, error: 'Invalid response from backend' },
+        { status: 500 }
       );
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    // Return the response with original status code and JSON body
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
     console.error('Upload proxy error:', error);
     return NextResponse.json(

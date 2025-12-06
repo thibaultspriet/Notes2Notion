@@ -302,21 +302,109 @@ def handle_oauth_callback(code: str, license_key: str = None) -> Dict[str, Any]:
     }
 
 
-def refresh_notion_token(user) -> str:
+def ensure_valid_token(user) -> str:
+    """
+    Ensure user has a valid Notion access token.
+
+    This is a helper function that should be called before making Notion API requests.
+    If the user's current token is invalid, it will attempt to refresh it.
+
+    Note: This function does NOT validate the token against Notion API.
+    It only refreshes the token if explicitly requested or after a 401 error.
+
+    Args:
+        user: User object with access_token and refresh_token
+
+    Returns:
+        str: Valid access token (either current or refreshed)
+
+    Raises:
+        Exception: If token refresh fails
+    """
+    # For now, just return the current token
+    # Token refresh will be triggered by 401 errors from Notion API
+    return user.access_token
+
+
+def refresh_notion_token(user) -> Dict[str, str]:
     """
     Refresh a Notion access token using the refresh token.
 
-    Note: This is a placeholder for future implementation.
-    Currently, Notion OAuth documentation doesn't specify token expiration,
-    so this may not be immediately necessary.
+    This function implements the OAuth 2.0 refresh token flow with Notion.
+    It sends a POST request to Notion's token endpoint with the refresh_token
+    and receives a new access_token.
 
     Args:
         user: User object with refresh_token
 
     Returns:
-        str: New access token
+        dict: Token response containing:
+            - access_token: New Notion API access token
+            - refresh_token: New refresh token (may be the same or rotated)
 
     Raises:
-        NotImplementedError: Feature not yet implemented
+        Exception: If token refresh fails or user has no refresh token
     """
-    raise NotImplementedError("Token refresh not yet implemented")
+    # Validate refresh token exists
+    if not user.refresh_token:
+        raise ValueError(f"User {user.bot_id} has no refresh token stored")
+
+    # Validate configuration
+    if not NOTION_CLIENT_ID or not NOTION_CLIENT_SECRET:
+        raise ValueError("NOTION_CLIENT_ID and NOTION_CLIENT_SECRET must be set")
+
+    # Prepare Basic Authentication header
+    credentials = f"{NOTION_CLIENT_ID}:{NOTION_CLIENT_SECRET}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {encoded_credentials}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": user.refresh_token
+    }
+
+    # Make request to Notion OAuth endpoint
+    response = requests.post(
+        NOTION_OAUTH_TOKEN_URL,
+        json=payload,
+        headers=headers,
+        timeout=10
+    )
+
+    if response.status_code != 200:
+        error_data = response.json()
+        error_msg = error_data.get('error', 'Unknown error')
+        raise Exception(f"Notion token refresh failed: {error_msg}")
+
+    token_data = response.json()
+
+    # Update user's tokens in database
+    from models import get_session
+    session = get_session()
+    try:
+        user.access_token = token_data['access_token']
+        # Notion may rotate the refresh token, so update it if present
+        if 'refresh_token' in token_data:
+            user.refresh_token = token_data['refresh_token']
+        user.updated_at = datetime.utcnow()
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        print(f"✅ Successfully refreshed token for user {user.bot_id}")
+
+        return {
+            'access_token': token_data['access_token'],
+            'refresh_token': token_data.get('refresh_token', user.refresh_token)
+        }
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
