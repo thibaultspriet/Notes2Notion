@@ -228,20 +228,48 @@ class MockNotesCreator:
         """
         # Step 1: Create the page
         print("[TEST MODE] Creating Notion page...")
-        page_result = await self.notion_connector.session.call_tool(
-            "API-post-page",
-            {
-                "parent": {"page_id": parent_page_id},
-                "properties": {
-                    "title": {
-                        "title": [{"text": {"content": title}}]
+        try:
+            page_result = await self.notion_connector.session.call_tool(
+                "API-post-page",
+                {
+                    "parent": {"page_id": parent_page_id},
+                    "properties": {
+                        "title": {
+                            "title": [{"text": {"content": title}}]
+                        }
                     }
                 }
-            }
-        )
+            )
+        except Exception as e:
+            error_str = str(e)
+            print(f"[TEST MODE] ❌ Error creating page: {error_str}")
+            # Check for specific error patterns (deleted or archived page)
+            if ("object_not_found" in error_str.lower() or
+                "invalid_request_url" in error_str.lower() or
+                "archived" in error_str.lower()):
+                raise ValueError("La page Notion configurée n'existe plus ou n'est plus accessible. Veuillez configurer une nouvelle page.")
+            # Re-raise the original error if it's not a known pattern
+            raise
 
         # Extract the new page ID from the result
+        # Check if the result contains an error
+        result_text = "".join([c.text for c in page_result.content])
+        print(f"[TEST MODE DEBUG] result_text length: {len(result_text)}")
+        print(f"[TEST MODE DEBUG] result_text[:300]: {result_text[:300]}")
+        print(f"[TEST MODE DEBUG] 'error' in lower: {'error' in result_text.lower()}")
+        print(f"[TEST MODE DEBUG] 'object_not_found' in lower: {'object_not_found' in result_text.lower()}")
+
+        if "error" in result_text.lower() and ("object_not_found" in result_text.lower() or
+                                                "invalid_request_url" in result_text.lower() or
+                                                "archived" in result_text.lower()):
+            print(f"[TEST MODE] ❌ Error in page creation result: {result_text[:500]}")
+            raise ValueError("La page Notion configurée n'existe plus ou n'est plus accessible. Veuillez configurer une nouvelle page.")
+
         page_id = self._extract_page_id(page_result)
+        if not page_id:
+            print(f"[TEST MODE] ❌ Could not extract page ID from result: {result_text[:200]}")
+            raise Exception("Échec de la création de la page Notion. Aucun ID de page retourné.")
+
         print(f"[TEST MODE] Page created with ID: {page_id}")
 
         # Step 2: Parse content and create blocks

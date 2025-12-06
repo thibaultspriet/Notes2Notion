@@ -273,6 +273,34 @@ def update_user_notion_page(bot_id: str, notion_page_id: str):
         session.close()
 
 
+def clear_user_notion_page(bot_id: str):
+    """
+    Clear the Notion page ID for a user (set to None).
+    This is typically called when the configured page is no longer valid.
+
+    Args:
+        bot_id: User's bot identifier
+
+    Returns:
+        User: Updated user object, or None if user not found
+    """
+    session = get_session()
+    try:
+        user = session.query(User).filter_by(bot_id=bot_id).first()
+        if user:
+            user.notion_page_id = None
+            user.updated_at = datetime.utcnow()
+            session.commit()
+            session.refresh(user)
+            print(f"✅ Cleared notion_page_id for user {bot_id}")
+        return user
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 # License Key Management Functions
 
 def validate_license_key(license_key: str) -> Dict[str, Any]:

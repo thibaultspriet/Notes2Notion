@@ -6,127 +6,58 @@ import RefreshHandler from "@/components/RefreshHandler";
 import NotionLoginPrompt from "@/components/NotionLoginPrompt";
 import PageIdSetup from "@/components/PageIdSetup";
 import LicenseKeyPrompt from "@/components/LicenseKeyPrompt";
-import {
-  isAuthenticated,
-  setToken,
-  getUserInfo,
-  setUserInfo,
-  fetchAndStoreUserInfo,
-  logout
-} from "@/lib/auth";
+import { setToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Home() {
   const isDevelopment = process.env.NEXT_PUBLIC_APP_ENV === 'development';
 
   const [testMode, setTestMode] = useState(false);
-  const [hasAccess, setHasAccess] = useState(false);
-  const [needsPageSetup, setNeedsPageSetup] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState<string>("");
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hasValidLicense, setHasValidLicense] = useState(false);
+  const [isCheckingLicense, setIsCheckingLicense] = useState(true);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
-  // Check authentication and handle OAuth callback
+  // Get auth state from context
+  const { user, isLoading, error, refreshUser, logout } = useAuth();
+
+  // Check for license and OAuth errors on mount
   useEffect(() => {
-    const checkLicenseAndAuth = async () => {
-      // Check for OAuth error in URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const errorParam = urlParams.get('error');
-      if (errorParam) {
-        setOauthError(decodeURIComponent(errorParam));
-        // Clear error from URL
-        window.history.replaceState(null, '', window.location.pathname);
-      }
+    // Check for OAuth error in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorParam = urlParams.get('error');
+    if (errorParam) {
+      setOauthError(decodeURIComponent(errorParam));
+      window.history.replaceState(null, '', window.location.pathname);
+    }
 
-      // STEP 1: Check license FIRST
-      const storedLicense = localStorage.getItem('notes2notion_license_key');
-      if (!storedLicense) {
-        setHasValidLicense(false);
-        setIsCheckingAuth(false);
-        return; // Stop here - show license prompt
-      }
+    // Check license
+    const storedLicense = localStorage.getItem('notes2notion_license_key');
+    setHasValidLicense(!!storedLicense);
+    setIsCheckingLicense(false);
+  }, []);
 
-      // License exists
-      setHasValidLicense(true);
+  // Handle OAuth callback
+  useEffect(() => {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const token = params.get('token');
 
-      // STEP 2: Continue with existing OAuth check
-      // Check if we have a redirect from OAuth callback (token in URL hash)
-      const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-      const token = params.get('token');
-      const workspace = params.get('workspace');
-      const needs_setup = params.get('needs_setup');
-
-      if (token) {
-        // OAuth callback - store token
-        setToken(token);
-
-        if (workspace) {
-          const workspaceName = decodeURIComponent(workspace);
-          setWorkspaceName(workspaceName);
-          setUserInfo({
-            workspace_name: workspaceName,
-            has_page_id: needs_setup !== 'true',
-            bot_id: '' // Will be fetched from backend
-          });
-        }
-
-        // Clear hash from URL
-        window.history.replaceState(null, '', window.location.pathname);
-
-        // Check if page setup is needed
-        if (needs_setup === 'true') {
-          setNeedsPageSetup(true);
-          setHasAccess(false);
-        } else {
-          setHasAccess(true);
-        }
-        setIsCheckingAuth(false);
-        return;
-      }
-
-      // Check for existing authentication
-      if (isAuthenticated()) {
-        // Verify token is still valid by fetching user info
-        const userInfo = await fetchAndStoreUserInfo();
-
-        if (userInfo) {
-          setWorkspaceName(userInfo.workspace_name);
-
-          if (!userInfo.has_page_id) {
-            setNeedsPageSetup(true);
-            setHasAccess(false);
-          } else {
-            setHasAccess(true);
-          }
-        } else {
-          // Token invalid - clear and show login
-          logout();
-          setHasAccess(false);
-        }
-      }
-
-      setIsCheckingAuth(false);
-    };
-
-    checkLicenseAndAuth();
+    if (token) {
+      // Store token - AuthContext will automatically fetch user info
+      setToken(token);
+      window.location.hash = ''; // Clear hash from URL
+    }
   }, []);
 
   const handleRefresh = () => {
     window.location.reload();
   };
 
-  const handleLoginSuccess = () => {
-    // This will be handled by the OAuth callback
-  };
-
   const handlePageSetupComplete = async () => {
-    // Refresh user info to get updated page_id status
-    const userInfo = await fetchAndStoreUserInfo();
-    if (userInfo && userInfo.has_page_id) {
-      setNeedsPageSetup(false);
-      setHasAccess(true);
-    }
+    console.log('📝 handlePageSetupComplete: Reloading page to fetch fresh user data...');
+    // Reload the page to ensure fresh data from DB
+    // The AuthContext will automatically fetch updated user info on mount
+    window.location.reload();
   };
 
   const handleLicenseValidated = () => {
@@ -134,45 +65,61 @@ export default function Home() {
   };
 
   const handleLogout = () => {
-    logout();
-    setHasAccess(false);
-    setNeedsPageSetup(false);
+    logout(); // Clears token and notifies other tabs
     window.location.reload();
   };
 
-  // Show loading state while checking authentication
-  if (isCheckingAuth) {
+  // Show loading state while checking license or auth
+  if (isCheckingLicense || isLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Vérification de l'authentification...</p>
+          <p className="text-gray-600">Chargement...</p>
         </div>
       </main>
     );
   }
 
-  // NEW: Show license prompt if no valid license
+  // Show error if API unavailable
+  if (error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+          <h2 className="text-xl font-bold text-red-900 mb-2">Erreur de connexion</h2>
+          <p className="text-red-700 mb-4">{error}</p>
+          <button
+            onClick={refreshUser}
+            className="w-full bg-black text-white py-2 px-4 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Réessayer
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // Show license prompt if no valid license
   if (!hasValidLicense) {
     return <LicenseKeyPrompt onLicenseValidated={handleLicenseValidated} />;
   }
 
-  // Show page setup if needed
-  if (needsPageSetup) {
+  // Show page setup if user exists but has no page configured
+  if (user && !user.has_page_id) {
     return (
       <PageIdSetup
-        workspaceName={workspaceName}
+        workspaceName={user.workspace_name}
         onComplete={handlePageSetupComplete}
       />
     );
   }
 
   // Show login prompt if not authenticated
-  if (!hasAccess) {
-    return <NotionLoginPrompt onLoginSuccess={handleLoginSuccess} errorMessage={oauthError} />;
+  if (!user) {
+    return <NotionLoginPrompt onLoginSuccess={() => {}} errorMessage={oauthError} />;
   }
 
-  // Show main application
+  // Show main application (user is authenticated and has page configured)
   return (
     <main className="min-h-screen flex items-center justify-center p-5">
       <RefreshHandler />
@@ -181,11 +128,9 @@ export default function Home() {
         {/* Top bar with workspace name and logout */}
         <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
           <div className="text-xs text-gray-500">
-            {workspaceName && (
-              <span className="bg-gray-100 px-2 py-1 rounded">
-                {workspaceName}
-              </span>
-            )}
+            <span className="bg-gray-100 px-2 py-1 rounded">
+              {user.workspace_name}
+            </span>
           </div>
           <div className="flex gap-2">
             {/* Logout button */}

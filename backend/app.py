@@ -199,15 +199,30 @@ def set_page_id(current_user):
     Returns:
     - success: Boolean indicating if update succeeded
     """
+    print(f"\n📝 POST /api/user/page-id for bot_id: {current_user.bot_id}")
     try:
         data = request.get_json()
         page_id = data.get('page_id')
+        print(f"   Received page_id: {page_id}")
 
         if not page_id:
+            print(f"   ❌ Missing page_id in request body")
             return jsonify({'error': 'Missing page_id'}), 400
 
         # Update user's default page ID
-        update_user_notion_page(current_user.bot_id, page_id)
+        print(f"   Calling update_user_notion_page...")
+        result = update_user_notion_page(current_user.bot_id, page_id)
+        print(f"   Update result: {result}")
+
+        # Verify the update worked
+        from models import get_session, User
+        session = get_session()
+        try:
+            fresh_user = session.query(User).filter_by(bot_id=current_user.bot_id).first()
+            if fresh_user:
+                print(f"   Verification - notion_page_id in DB: {fresh_user.notion_page_id}")
+        finally:
+            session.close()
 
         return jsonify({
             'success': True,
@@ -235,11 +250,42 @@ def get_user_info(current_user):
     - has_page_id: Whether user has configured a default page
     - bot_id: User identifier
     """
-    return jsonify({
-        'workspace_name': current_user.workspace_name,
-        'has_page_id': current_user.notion_page_id is not None,
-        'bot_id': current_user.bot_id
-    }), 200
+    # DEBUG: Log to see what's happening
+    print(f"\n🔍 GET /api/user/info for bot_id: {current_user.bot_id}")
+    print(f"   current_user.id (primary key): {current_user.id}")
+    print(f"   notion_page_id in current_user object: {current_user.notion_page_id}")
+    print(f"   has_page_id calculated: {current_user.notion_page_id is not None}")
+
+    # Force a fresh query to avoid detached session issues
+    from models import get_session
+    session = get_session()
+    try:
+        from models import User
+        # Query ALL users with this bot_id to check for duplicates
+        all_matching_users = session.query(User).filter_by(bot_id=current_user.bot_id).all()
+        print(f"   Found {len(all_matching_users)} user(s) with this bot_id")
+        for idx, u in enumerate(all_matching_users):
+            print(f"     User {idx+1}: id={u.id}, notion_page_id={u.notion_page_id}")
+
+        fresh_user = session.query(User).filter_by(bot_id=current_user.bot_id).first()
+        if fresh_user:
+            print(f"   Fresh DB query - user.id: {fresh_user.id}, notion_page_id: {fresh_user.notion_page_id}")
+            result = {
+                'workspace_name': fresh_user.workspace_name,
+                'has_page_id': fresh_user.notion_page_id is not None,
+                'bot_id': fresh_user.bot_id
+            }
+        else:
+            print(f"   ⚠️  No user found in fresh query!")
+            result = {
+                'workspace_name': current_user.workspace_name,
+                'has_page_id': current_user.notion_page_id is not None,
+                'bot_id': current_user.bot_id
+            }
+        print(f"   Returning: {result}\n")
+        return jsonify(result), 200
+    finally:
+        session.close()
 
 
 @app.route('/api/notion/search', methods=['POST'])
@@ -519,6 +565,31 @@ def upload_file(current_user):
                 'details': result,
                 'test_mode': test_mode
             })
+        except ValueError as e:
+            error_message = str(e)
+            error_trace = traceback.format_exc()
+            print(f"\n❌ ValueError during processing:")
+            print(error_trace)
+
+            # Check if this is an "invalid page" error
+            if "n'existe plus" in error_message or "plus accessible" in error_message:
+                # Clear the invalid page_id from database
+                from models import clear_user_notion_page
+                clear_user_notion_page(current_user.bot_id)
+
+                # Return 410 Gone to indicate the resource no longer exists
+                return jsonify({
+                    'success': False,
+                    'error': 'page_deleted',
+                    'message': error_message,
+                    'needs_page_setup': True
+                }), 410
+
+            # Other ValueError - return 400
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 400
         except Exception as e:
             error_trace = traceback.format_exc()
             print(f"\n❌ ERROR during processing:")

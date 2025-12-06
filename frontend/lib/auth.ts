@@ -1,19 +1,15 @@
 /**
  * Authentication utilities for Notion OAuth integration.
  *
- * This module handles JWT session tokens stored in localStorage.
+ * This module handles JWT session tokens and license keys stored in localStorage.
  * Tokens are obtained after successful Notion OAuth authentication.
+ *
+ * Note: User info is managed by AuthContext (frontend/contexts/AuthContext.tsx),
+ * not cached in localStorage.
  */
 
 const TOKEN_KEY = 'notes2notion_session_token';
-const USER_INFO_KEY = 'notes2notion_user_info';
 const LICENSE_KEY = 'notes2notion_license_key';
-
-export interface UserInfo {
-  workspace_name: string;
-  has_page_id: boolean;
-  bot_id: string;
-}
 
 /**
  * Get the current session token from localStorage
@@ -37,29 +33,6 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_INFO_KEY);
-}
-
-/**
- * Store user info in localStorage
- */
-export function setUserInfo(userInfo: UserInfo): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(USER_INFO_KEY, JSON.stringify(userInfo));
-}
-
-/**
- * Get user info from localStorage
- */
-export function getUserInfo(): UserInfo | null {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem(USER_INFO_KEY);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -67,47 +40,6 @@ export function getUserInfo(): UserInfo | null {
  */
 export function isAuthenticated(): boolean {
   return getToken() !== null;
-}
-
-/**
- * Fetch user info from backend and store in localStorage
- * Returns null if not authenticated or fetch fails
- */
-export async function fetchAndStoreUserInfo(): Promise<UserInfo | null> {
-  const token = getToken();
-  if (!token) {
-    console.log('fetchAndStoreUserInfo: No token found');
-    return null;
-  }
-
-  try {
-    console.log('fetchAndStoreUserInfo: Fetching user info...');
-    // Use relative URL to call Next.js API proxy instead of direct backend call
-    const response = await fetch('/api/user/info', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    console.log('fetchAndStoreUserInfo: Response status:', response.status);
-
-    if (!response.ok) {
-      // Token is invalid or expired
-      if (response.status === 401) {
-        console.log('fetchAndStoreUserInfo: Unauthorized, clearing token');
-        clearToken();
-      }
-      return null;
-    }
-
-    const userInfo: UserInfo = await response.json();
-    console.log('fetchAndStoreUserInfo: User info received:', userInfo);
-    setUserInfo(userInfo);
-    return userInfo;
-  } catch (error) {
-    console.error('Failed to fetch user info:', error);
-    return null;
-  }
 }
 
 /**
@@ -143,9 +75,7 @@ export async function updatePageId(pageId: string): Promise<boolean> {
     const result = await response.json();
     console.log('updatePageId: Success:', result);
 
-    // Refresh user info after updating page ID
-    console.log('updatePageId: Refreshing user info...');
-    await fetchAndStoreUserInfo();
+    // Note: User info refresh is handled by AuthContext.refreshUser()
     return true;
   } catch (error) {
     console.error('Failed to update page ID:', error);

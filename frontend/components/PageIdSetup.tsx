@@ -158,8 +158,7 @@ export default function PageIdSetup({ workspaceName, onComplete }: PageIdSetupPr
       const success = await updatePageId(selectedPage.id);
 
       if (success) {
-        // Give backend a moment to persist the change before proceeding
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Let parent handle the refresh (will reload the page)
         onComplete();
       } else {
         setError('Échec de la configuration de la page. Veuillez réessayer.');

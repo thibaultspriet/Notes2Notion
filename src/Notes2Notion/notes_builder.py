@@ -228,10 +228,18 @@ class NotesCreator:
                 if "error" in result_text.lower() or "validation" in result_text.lower():
                     consecutive_errors += 1
                     print(f"⚠️  Tool call resulted in error ({consecutive_errors}/{max_consecutive_errors})")
+                    print(f"📋 Error details: {result_text[:500]}")
+
+                    # Check for specific critical errors that should fail immediately (deleted or archived page)
+                    if ("object_not_found" in result_text.lower() or
+                        "invalid_request_url" in result_text.lower() or
+                        "archived" in result_text.lower()):
+                        raise ValueError("La page Notion configurée n'existe plus ou n'est plus accessible. Veuillez configurer une nouvelle page.")
+
                     if consecutive_errors >= max_consecutive_errors:
                         print(f"❌ Stopping after {max_consecutive_errors} consecutive errors")
-                        final_text.append(f"[Stopped after {max_consecutive_errors} consecutive errors]")
-                        break
+                        # Raise exception instead of just logging
+                        raise Exception(f"Échec de la création de la page Notion après {max_consecutive_errors} tentatives. Vérifiez que la page parent existe et que vous avez les permissions nécessaires.")
                 else:
                     consecutive_errors = 0  # Reset counter on success
 
@@ -245,7 +253,7 @@ class NotesCreator:
 
         if iteration >= max_iterations:
             print(f"⚠️  Reached maximum iterations ({max_iterations})")
-            final_text.append(f"[Reached maximum iterations: {max_iterations}]")
+            raise Exception(f"Le traitement a atteint le nombre maximal d'itérations ({max_iterations}). Veuillez réessayer.")
 
         return "\n".join(final_text)
 
