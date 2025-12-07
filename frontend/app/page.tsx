@@ -54,7 +54,6 @@ export default function Home() {
   };
 
   const handlePageSetupComplete = async () => {
-    console.log('📝 handlePageSetupComplete: Reloading page to fetch fresh user data...');
     // Reload the page to ensure fresh data from DB
     // The AuthContext will automatically fetch updated user info on mount
     window.location.reload();

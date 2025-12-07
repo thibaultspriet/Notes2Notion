@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import sys
 import traceback
 from functools import wraps
+import logging
 
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / '.env')
@@ -25,6 +26,9 @@ from Notes2Notion.mock_components import (MockImageTextExtractor, MockDraftEnhan
 # Import OAuth and database modules
 from oauth import require_oauth, handle_oauth_callback
 from models import run_migrations, update_user_notion_page, validate_license_key
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Next.js frontend
@@ -44,55 +48,6 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-def require_access_code(f):
-    """
-    Decorator to require access code authentication.
-
-    Checks for 'Authorization: Bearer <access_code>' header.
-    This will be compatible with future NextAuth migration where
-    the Bearer token will be a session token instead of the static access code.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Get the configured access code from environment
-        access_code = os.getenv('ACCESS_CODE')
-
-        # If no access code is configured, allow the request (backward compatibility)
-        if not access_code:
-            print("⚠️  WARNING: No ACCESS_CODE configured. API is unprotected!")
-            return f(*args, **kwargs)
-
-        # Get the Authorization header
-        auth_header = request.headers.get('Authorization')
-
-        if not auth_header:
-            return jsonify({
-                'error': 'Unauthorized',
-                'message': 'Missing Authorization header'
-            }), 401
-
-        # Check format: "Bearer <code>"
-        if not auth_header.startswith('Bearer '):
-            return jsonify({
-                'error': 'Unauthorized',
-                'message': 'Invalid Authorization header format. Expected: Bearer <access_code>'
-            }), 401
-
-        # Extract the token
-        provided_code = auth_header[7:]  # Remove "Bearer " prefix
-
-        # Verify the access code
-        if provided_code != access_code:
-            return jsonify({
-                'error': 'Unauthorized',
-                'message': 'Invalid access code'
-            }), 401
-
-        # Access code is valid, proceed with the request
-        return f(*args, **kwargs)
-
-    return decorated_function
 
 
 @app.route('/api/health', methods=['GET'])
@@ -142,8 +97,8 @@ def validate_license():
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        print(f"\n❌ License validation error:")
-        print(error_trace)
+        logger.error(f"\n❌ License validation error:")
+        logger.error(error_trace)
         return jsonify({'valid': False, 'message': 'Erreur de validation'}), 500
 
 
@@ -177,8 +132,8 @@ def oauth_callback():
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        print(f"\n❌ OAuth callback error:")
-        print(error_trace)
+        logger.error(f"\n❌ OAuth callback error:")
+        logger.error(error_trace)
         return jsonify({
             'error': 'OAuth authentication failed',
             'message': str(e)
@@ -216,8 +171,8 @@ def set_page_id(current_user):
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        print(f"❌ Error updating page ID for {current_user.bot_id}:")
-        print(error_trace)
+        logger.error(f"❌ Error updating page ID for {current_user.bot_id}:")
+        logger.error(error_trace)
         return jsonify({
             'error': 'Failed to update page ID',
             'message': str(e)
@@ -313,21 +268,21 @@ def search_notion_pages(current_user):
 
             # If 401 Unauthorized and we haven't retried yet, refresh token
             if response.status_code == 401 and attempt < max_retries:
-                print(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
+                logger.warning(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
                 try:
                     token_data = refresh_notion_token(current_user)
                     access_token = token_data['access_token']
-                    print(f"✅ Token refreshed, retrying request...")
+                    logger.info(f"✅ Token refreshed, retrying request...")
                     continue
                 except Exception as refresh_error:
-                    print(f"❌ Token refresh failed: {refresh_error}")
+                    logger.error(f"❌ Token refresh failed: {refresh_error}")
                     return jsonify({
                         'error': 'Authentication failed',
                         'message': 'Votre session Notion a expiré et n\'a pas pu être renouvelée. Veuillez vous reconnecter.'
                     }), 401
 
             # If we get here, the request failed and we can't retry
-            print(f"❌ Notion API error: {response.status_code} - {response.text}")
+            logger.error(f"❌ Notion API error: {response.status_code} - {response.text}")
             return jsonify({
                 'error': 'Failed to search Notion pages',
                 'message': response.text
@@ -410,8 +365,8 @@ def search_notion_pages(current_user):
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        print(f"\n❌ Error searching Notion pages:")
-        print(error_trace)
+        logger.error(f"\n❌ Error searching Notion pages:")
+        logger.error(error_trace)
         return jsonify({
             'error': 'Failed to search pages',
             'message': str(e)
@@ -470,7 +425,7 @@ def upload_file(current_user):
 
         # VALIDATE TOKEN BEFORE PROCESSING
         # Make a simple API call to verify the token is valid
-        print(f"\n🔐 Validating Notion token...")
+        logger.info(f"\n🔐 Validating Notion token...")
         access_token = current_user.access_token
 
         validation_headers = {
@@ -487,36 +442,36 @@ def upload_file(current_user):
 
         # If token is invalid, try to refresh it
         if validation_response.status_code == 401:
-            print(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
+            logger.warning(f"⚠️  Token expired for user {current_user.bot_id}, attempting refresh...")
             try:
                 token_data = refresh_notion_token(current_user)
                 access_token = token_data['access_token']
-                print(f"✅ Token refreshed successfully")
+                logger.info(f"✅ Token refreshed successfully")
             except Exception as refresh_error:
-                print(f"❌ Token refresh failed: {refresh_error}")
+                logger.error(f"❌ Token refresh failed: {refresh_error}")
                 return jsonify({
                     'success': False,
                     'error': 'Authentication failed',
                     'message': 'Votre session Notion a expiré et n\'a pas pu être renouvelée. Veuillez vous reconnecter.'
                 }), 401
         elif not validation_response.ok:
-            print(f"❌ Token validation failed with status {validation_response.status_code}")
+            logger.error(f"❌ Token validation failed with status {validation_response.status_code}")
             return jsonify({
                 'success': False,
                 'error': 'Token validation failed',
                 'message': f'Erreur de validation du token Notion: {validation_response.text}'
             }), 500
 
-        print(f"✅ Token is valid")
+        logger.info(f"✅ Token is valid")
 
         # Process the image and upload to Notion
         try:
-            print(f"\n{'='*60}")
-            print(f"👤 User: {current_user.workspace_name} (bot_id: {current_user.bot_id})")
-            print(f"📸 Processing file: {filepath}")
-            print(f"🧪 Test mode: {test_mode}")
-            print(f"📄 Target page: {current_user.notion_page_id}")
-            print(f"{'='*60}\n")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"👤 User: {current_user.workspace_name} (bot_id: {current_user.bot_id})")
+            logger.info(f"📸 Processing file: {filepath}")
+            logger.info(f"🧪 Test mode: {test_mode}")
+            logger.info(f"📄 Target page: {current_user.notion_page_id}")
+            logger.info(f"{'='*60}\n")
 
             result = asyncio.run(
                 process_and_upload(
@@ -527,7 +482,7 @@ def upload_file(current_user):
                 )
             )
 
-            print(f"\n✅ Processing completed successfully!")
+            logger.info(f"\n✅ Processing completed successfully!")
 
             return jsonify({
                 'success': True,
@@ -538,8 +493,8 @@ def upload_file(current_user):
         except ValueError as e:
             error_message = str(e)
             error_trace = traceback.format_exc()
-            print(f"\n❌ ValueError during processing:")
-            print(error_trace)
+            logger.error(f"\n❌ ValueError during processing:")
+            logger.error(error_trace)
 
             # Check if this is an "invalid page" error
             if "n'existe plus" in error_message or "plus accessible" in error_message:
@@ -562,8 +517,8 @@ def upload_file(current_user):
             }), 400
         except Exception as e:
             error_trace = traceback.format_exc()
-            print(f"\n❌ ERROR during processing:")
-            print(error_trace)
+            logger.error(f"\n❌ ERROR during processing:")
+            logger.error(error_trace)
             return jsonify({
                 'success': False,
                 'error': str(e),
@@ -595,7 +550,7 @@ async def process_and_upload(
 
     try:
         if test_mode:
-            print("🧪 TEST MODE - Using mock components (zero LLM calls)")
+            logger.info("🧪 TEST MODE - Using mock components (zero LLM calls)")
             image_text_extractor = MockImageTextExtractor(folder_path)
             draft_enhancer = MockDraftEnhancer()
             notes_creator = MockNotesCreator(
@@ -604,7 +559,7 @@ async def process_and_upload(
                 image_text_extractor
             )
         else:
-            print("🚀 PRODUCTION MODE - Using real LLM components")
+            logger.info("🚀 PRODUCTION MODE - Using real LLM components")
             image_text_extractor = ImageTextExtractor(folder_path)
             draft_enhancer = DraftEnhancer()
             notes_creator = NotesCreator(
@@ -631,8 +586,8 @@ if __name__ == '__main__':
     missing_oauth_vars = [var for var in required_oauth_vars if not os.getenv(var)]
 
     if missing_oauth_vars:
-        print(f"\n❌ ERROR: Missing OAuth environment variables: {', '.join(missing_oauth_vars)}")
-        print("Please check your .env file and configure Notion OAuth credentials")
+        logger.error(f"\n❌ ERROR: Missing OAuth environment variables: {', '.join(missing_oauth_vars)}")
+        logger.error("Please check your .env file and configure Notion OAuth credentials")
         sys.exit(1)
 
     # Check OpenAI configuration
@@ -640,8 +595,8 @@ if __name__ == '__main__':
     has_azure = os.getenv('AZURE_OPENAI_API_KEY') and os.getenv('AZURE_OPENAI_ENDPOINT')
 
     if not has_openai and not has_azure:
-        print("\n❌ ERROR: No OpenAI configuration found")
-        print("Please set either OPENAI_API_KEY or (AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT)")
+        logger.error("\n❌ ERROR: No OpenAI configuration found")
+        logger.error("Please set either OPENAI_API_KEY or (AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT)")
         sys.exit(1)
 
     port = int(os.getenv('BACKEND_PORT', 5001))
@@ -665,4 +620,4 @@ if __name__ == '__main__':
     print(f"  - Upload folder: {UPLOAD_FOLDER}")
     print(f"\n{'='*60}\n")
 
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)

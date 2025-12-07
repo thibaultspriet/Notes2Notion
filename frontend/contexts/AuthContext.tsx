@@ -67,7 +67,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       const userInfo: UserInfo = await response.json();
-      console.log('✅ fetchUserInfo: User data received:', userInfo);
       setUser(userInfo);
       setError(null);
       setIsLoading(false);
@@ -87,11 +86,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Refresh user info manually
   const refreshUser = async () => {
-    console.log('🔄 refreshUser: Starting...');
     setIsLoading(true);
     setError(null);
     await fetchUserInfo();
-    console.log('🔄 refreshUser: Completed');
 
     // Broadcast to other tabs
     if (channel.current) {
@@ -132,7 +129,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
     } catch (err) {
       // BroadcastChannel not supported (graceful fallback)
-      console.warn('BroadcastChannel not supported:', err);
     }
 
     return () => {

@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 
 from typing import TypedDict
 from pathlib import Path
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 
 from .tooling import McpNotionConnector, ImageTextExtractor
 from .settings import S, M
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -46,7 +50,7 @@ class DraftEnhancer:
             HumanMessage(content=draft)
         ]
         response = await self.llm_for_notes_plan.ainvoke(messages)
-        print("response 1 : ", response.content)
+        logger.debug("response 1 : %s", response.content)
         state["agent_response"] = response.content
         return state
 
@@ -62,7 +66,7 @@ class DraftEnhancer:
             HumanMessage(content=structured_draft)
         ]
         response = await self.llm_for_notes_content.ainvoke(messages)
-        print("response 2 : ", response.content)
+        logger.debug("response 2 : %s", response.content)
         state["agent_response"] = response.content
         return state
 
@@ -77,11 +81,11 @@ class DraftEnhancer:
             HumanMessage(content=content)
         ]
         response = await self.llm_for_check.ainvoke(messages)
-        print("response 3 : ", response.content)
+        logger.debug("response 3 : %s", response.content)
         if response.content == "ok":
             return "ok"
         else:
-            print("response 3 : ", response.content)
+            logger.debug("response 3 : %s", response.content)
             return "ko"
 
     async def out(self, state: State):
@@ -170,10 +174,10 @@ class NotesCreator:
             notion_page_id=user_notion_page_id,
             draft=enhanced_draft
             )
-        print(f"\n📝 Prompt sent to LLM for Notion upload:")
-        print(f"Title: {title}")
-        print(f"Parent Page ID: {user_notion_page_id}")
-        print(f"Draft preview (first 200 chars): {enhanced_draft[:200]}...")
+        logger.info(f"\n📝 Prompt sent to LLM for Notion upload:")
+        logger.info(f"Title: {title}")
+        logger.info(f"Parent Page ID: {user_notion_page_id}")
+        logger.info(f"Draft preview (first 200 chars): {enhanced_draft[:200]}...")
         return [HumanMessage(content=filled_prompt)]
 
     async def write_in_notion(self, messages):
@@ -187,12 +191,12 @@ class NotesCreator:
 
         while iteration < max_iterations:
             iteration += 1
-            print(f"\n🔄 Iteration {iteration}/50 - Calling LLM...")
+            logger.info(f"\n🔄 Iteration {iteration}/50 - Calling LLM...")
 
             # Call LLM with current messages
             message = await self.llm_with_functions.ainvoke(messages)
 
-            print(f"✉️  LLM response - has function_call: {hasattr(message, 'additional_kwargs') and 'function_call' in message.additional_kwargs}")
+            logger.debug(f"✉️  LLM response - has function_call: {hasattr(message, 'additional_kwargs') and 'function_call' in message.additional_kwargs}")
 
             if (hasattr(message, "additional_kwargs")
                     and "function_call" in message.additional_kwargs):
@@ -203,8 +207,8 @@ class NotesCreator:
                 func_args_dict = json.loads(func_args_json)
 
                 # Call the actual tool via MCP session
-                print(f"🔧 Calling tool: {func_name}")
-                print(f"📦 Args: {func_args_json[:200]}..." if len(func_args_json) > 200 else f"📦 Args: {func_args_json}")
+                logger.info(f"🔧 Calling tool: {func_name}")
+                logger.debug(f"📦 Args: {func_args_json[:200]}..." if len(func_args_json) > 200 else f"📦 Args: {func_args_json}")
 
                 result = await (self.notion_connector.session
                                 .call_tool(func_name, func_args_dict))
@@ -212,7 +216,7 @@ class NotesCreator:
                 final_text.append(
                     f"[Calling tool {func_name} with args {func_args_json}]")
 
-                print(f"✅ Tool result length: {len(''.join([c.text for c in result.content]))} chars")
+                logger.debug(f"✅ Tool result length: {len(''.join([c.text for c in result.content]))} chars")
 
                 # Append function_call message
                 messages.append(AIMessage(content="", additional_kwargs={
@@ -227,8 +231,8 @@ class NotesCreator:
                 # Check if this was an error response
                 if "error" in result_text.lower() or "validation" in result_text.lower():
                     consecutive_errors += 1
-                    print(f"⚠️  Tool call resulted in error ({consecutive_errors}/{max_consecutive_errors})")
-                    print(f"📋 Error details: {result_text[:500]}")
+                    logger.warning(f"⚠️  Tool call resulted in error ({consecutive_errors}/{max_consecutive_errors})")
+                    logger.warning(f"📋 Error details: {result_text[:500]}")
 
                     # Check for specific critical errors that should fail immediately (deleted or archived page)
                     if ("object_not_found" in result_text.lower() or
@@ -237,7 +241,7 @@ class NotesCreator:
                         raise ValueError("La page Notion configurée n'existe plus ou n'est plus accessible. Veuillez configurer une nouvelle page.")
 
                     if consecutive_errors >= max_consecutive_errors:
-                        print(f"❌ Stopping after {max_consecutive_errors} consecutive errors")
+                        logger.error(f"❌ Stopping after {max_consecutive_errors} consecutive errors")
                         # Raise exception instead of just logging
                         raise Exception(f"Échec de la création de la page Notion après {max_consecutive_errors} tentatives. Vérifiez que la page parent existe et que vous avez les permissions nécessaires.")
                 else:
@@ -245,14 +249,14 @@ class NotesCreator:
 
             else:
                 # LLM didn't call a function - it's done
-                print(f"🏁 LLM finished - no more function calls")
+                logger.info(f"🏁 LLM finished - no more function calls")
                 if message.content:
-                    print(f"📝 Final message: {message.content[:100]}...")
+                    logger.info(f"📝 Final message: {message.content[:100]}...")
                     final_text.append(message.content)
                 break  # Exit immediately when LLM stops calling functions
 
         if iteration >= max_iterations:
-            print(f"⚠️  Reached maximum iterations ({max_iterations})")
+            logger.warning(f"⚠️  Reached maximum iterations ({max_iterations})")
             raise Exception(f"Le traitement a atteint le nombre maximal d'itérations ({max_iterations}). Veuillez réessayer.")
 
         return "\n".join(final_text)
@@ -281,6 +285,4 @@ class NotesCreator:
 
     def get_primary_notes(self):
         query = self.image_text_extractor.extract_text()
-        # file_path = './mock_txt.txt'
-        # query = utils.extract_text_from_file(file_path)
         return query

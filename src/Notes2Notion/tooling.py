@@ -1,6 +1,7 @@
 import base64
 import os
 import json
+import logging
 from openai import OpenAI
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -8,6 +9,9 @@ from contextlib import AsyncExitStack
 from typing import Optional
 
 from . import utils
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class ImageTextExtractor:
@@ -97,7 +101,7 @@ class McpNotionConnector:
         await self.session.initialize()
 
         tools = await self.session.list_tools()
-        print("Available tools:", [tool.name for tool in tools.tools])
+        logger.debug("Available tools: %s", [tool.name for tool in tools.tools])
 
     async def cleanup(self):
         """Clean up resources"""
