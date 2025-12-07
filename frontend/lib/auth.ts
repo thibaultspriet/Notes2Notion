@@ -48,12 +48,10 @@ export function isAuthenticated(): boolean {
 export async function updatePageId(pageId: string): Promise<boolean> {
   const token = getToken();
   if (!token) {
-    console.log('updatePageId: No token found');
     return false;
   }
 
   try {
-    console.log('updatePageId: Updating page ID to:', pageId);
     // Use relative URL to call Next.js API proxy instead of direct backend call
     const response = await fetch('/api/user/page-id', {
       method: 'POST',
@@ -64,8 +62,6 @@ export async function updatePageId(pageId: string): Promise<boolean> {
       body: JSON.stringify({ page_id: pageId }),
     });
 
-    console.log('updatePageId: Response status:', response.status);
-
     if (!response.ok) {
       const errorData = await response.json();
       console.error('updatePageId: Failed with error:', errorData);
@@ -73,7 +69,6 @@ export async function updatePageId(pageId: string): Promise<boolean> {
     }
 
     const result = await response.json();
-    console.log('updatePageId: Success:', result);
 
     // Note: User info refresh is handled by AuthContext.refreshUser()
     return true;

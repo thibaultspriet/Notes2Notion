@@ -5,10 +5,14 @@ These components generate random structured content to test the Notion upload pi
 
 import os
 import random
+import logging
 from datetime import datetime
 from typing import TypedDict
 from pathlib import Path
 from . import utils
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class MockImageTextExtractor:
@@ -23,8 +27,8 @@ class MockImageTextExtractor:
         images_path = utils.get_file_paths(self.repo_path)
         image_count = sum(1 for path in images_path if ".gitkeep" not in path)
 
-        print(f"[TEST MODE] Found {image_count} images in {self.repo_path}")
-        print("[TEST MODE] Generating random mock text (no LLM calls)")
+        logger.info(f"[TEST MODE] Found {image_count} images in {self.repo_path}")
+        logger.info("[TEST MODE] Generating random mock text (no LLM calls)")
 
         # Generate random structured content
         mock_content = self._generate_random_content(image_count)
@@ -127,21 +131,21 @@ class MockDraftEnhancer:
 
     async def structure_content(self, state: "MockDraftEnhancer.State") -> "MockDraftEnhancer.State":
         """Mock structuring - just returns the input with minimal formatting."""
-        print("[TEST MODE] Mock structure_content (no LLM call)")
+        logger.info("[TEST MODE] Mock structure_content (no LLM call)")
         self.state = state
         state["agent_response"] = state["user_input"]
         return state
 
     async def enhance_clarity(self, state: "MockDraftEnhancer.State") -> "MockDraftEnhancer.State":
         """Mock enhancement - returns content as-is."""
-        print("[TEST MODE] Mock enhance_clarity (no LLM call)")
+        logger.info("[TEST MODE] Mock enhance_clarity (no LLM call)")
         state = self.state
         # Keep the content unchanged
         return state
 
     async def check_facts(self, state: "MockDraftEnhancer.State"):
         """Mock fact checking - always returns 'ok'."""
-        print("[TEST MODE] Mock check_facts (no LLM call)")
+        logger.info("[TEST MODE] Mock check_facts (no LLM call)")
         return "ok"
 
     async def out(self, state: "MockDraftEnhancer.State"):
@@ -189,10 +193,10 @@ class MockNotesCreator:
         Create notes without any LLM calls.
 
         Args:
-            user_notion_token: User's Notion OAuth access token 
-            user_notion_page_id: User's target Notion page ID 
+            user_notion_token: User's Notion OAuth access token
+            user_notion_page_id: User's target Notion page ID
         """
-        print("[TEST MODE] MockNotesCreator - No LLM calls for Notion block creation")
+        logger.info("[TEST MODE] MockNotesCreator - No LLM calls for Notion block creation")
 
         # Get mock content
         query = self.image_text_extractor.extract_text()
@@ -213,13 +217,13 @@ class MockNotesCreator:
 
         content = workflow_result["agent_response"]
 
-        print(f"[TEST MODE] Creating Notion page with title: {title}")
-        print(f"[TEST MODE] Content length: {len(content)} characters")
+        logger.info(f"[TEST MODE] Creating Notion page with title: {title}")
+        logger.info(f"[TEST MODE] Content length: {len(content)} characters")
 
         # Create page directly using MCP tools (no LLM decision)
         await self._create_notion_page_directly(title, user_notion_page_id, content)
 
-        print("[TEST MODE] ✅ Page created successfully!")
+        logger.info("[TEST MODE] ✅ Page created successfully!")
 
     async def _create_notion_page_directly(self, title: str, parent_page_id: str, content: str):
         """
@@ -227,7 +231,7 @@ class MockNotesCreator:
         This simulates what the LLM would do, but with hardcoded logic.
         """
         # Step 1: Create the page
-        print("[TEST MODE] Creating Notion page...")
+        logger.info("[TEST MODE] Creating Notion page...")
         try:
             page_result = await self.notion_connector.session.call_tool(
                 "API-post-page",
@@ -242,7 +246,7 @@ class MockNotesCreator:
             )
         except Exception as e:
             error_str = str(e)
-            print(f"[TEST MODE] ❌ Error creating page: {error_str}")
+            logger.error(f"[TEST MODE] ❌ Error creating page: {error_str}")
             # Check for specific error patterns (deleted or archived page)
             if ("object_not_found" in error_str.lower() or
                 "invalid_request_url" in error_str.lower() or
@@ -254,23 +258,19 @@ class MockNotesCreator:
         # Extract the new page ID from the result
         # Check if the result contains an error
         result_text = "".join([c.text for c in page_result.content])
-        print(f"[TEST MODE DEBUG] result_text length: {len(result_text)}")
-        print(f"[TEST MODE DEBUG] result_text[:300]: {result_text[:300]}")
-        print(f"[TEST MODE DEBUG] 'error' in lower: {'error' in result_text.lower()}")
-        print(f"[TEST MODE DEBUG] 'object_not_found' in lower: {'object_not_found' in result_text.lower()}")
 
         if "error" in result_text.lower() and ("object_not_found" in result_text.lower() or
                                                 "invalid_request_url" in result_text.lower() or
                                                 "archived" in result_text.lower()):
-            print(f"[TEST MODE] ❌ Error in page creation result: {result_text[:500]}")
+            logger.error(f"[TEST MODE] ❌ Error in page creation result: {result_text[:500]}")
             raise ValueError("La page Notion configurée n'existe plus ou n'est plus accessible. Veuillez configurer une nouvelle page.")
 
         page_id = self._extract_page_id(page_result)
         if not page_id:
-            print(f"[TEST MODE] ❌ Could not extract page ID from result: {result_text[:200]}")
+            logger.error(f"[TEST MODE] ❌ Could not extract page ID from result: {result_text[:200]}")
             raise Exception("Échec de la création de la page Notion. Aucun ID de page retourné.")
 
-        print(f"[TEST MODE] Page created with ID: {page_id}")
+        logger.info(f"[TEST MODE] Page created with ID: {page_id}")
 
         # Step 2: Parse content and create blocks
         lines = content.split('\n')
@@ -309,7 +309,7 @@ class MockNotesCreator:
 
     async def _create_single_block(self, page_id: str, block_type: str, text: str):
         """Create a single Notion block via MCP."""
-        print(f"[TEST MODE] Creating {block_type}: {text[:50]}...")
+        logger.debug(f"[TEST MODE] Creating {block_type}: {text[:50]}...")
 
         try:
             await self.notion_connector.session.call_tool(
@@ -333,7 +333,7 @@ class MockNotesCreator:
                 }
             )
         except Exception as e:
-            print(f"[TEST MODE] ⚠️  Error creating block: {e}")
+            logger.warning(f"[TEST MODE] ⚠️  Error creating block: {e}")
 
     def _extract_page_id(self, page_result) -> str:
         """Extract page ID from MCP result."""

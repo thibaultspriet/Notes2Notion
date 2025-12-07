@@ -13,8 +13,12 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify
 from typing import Optional, Dict, Any
+import logging
 
 from models import get_user_by_bot_id, create_or_update_user
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 # Notion OAuth configuration
@@ -275,7 +279,7 @@ def handle_oauth_callback(code: str, license_key: str = None) -> Dict[str, Any]:
             if license_obj.used_by_user_id is not None:
                 # License is already used - verify it belongs to THIS user
                 if license_obj.used_by_user_id == user.id:
-                    print(f"✅ User {user.id} reconnecting with their own license: {normalized_key}")
+                    logger.info(f"✅ User {user.id} reconnecting with their own license: {normalized_key}")
                     session.close()
                 else:
                     # License belongs to a different user - REJECT
@@ -285,10 +289,10 @@ def handle_oauth_callback(code: str, license_key: str = None) -> Dict[str, Any]:
                 # License is available - activate it for this user
                 session.close()
                 activate_license_key(normalized_key, user.id)
-                print(f"✅ License key activated for new user {user.id}")
+                logger.info(f"✅ License key activated for new user {user.id}")
 
         except Exception as e:
-            print(f"⚠️  License activation failed: {e}")
+            logger.warning(f"⚠️  License activation failed: {e}")
             raise  # Re-raise to return error to frontend
 
     # Create session token for frontend
@@ -397,7 +401,7 @@ def refresh_notion_token(user) -> Dict[str, str]:
         session.commit()
         session.refresh(user)
 
-        print(f"✅ Successfully refreshed token for user {user.bot_id}")
+        logger.info(f"✅ Successfully refreshed token for user {user.bot_id}")
 
         return {
             'access_token': token_data['access_token'],

@@ -55,13 +55,10 @@ export async function GET(request: NextRequest) {
       try {
         const decoded = JSON.parse(atob(state));
         licenseKey = decoded.license;
-        console.log('License key found in OAuth state');
       } catch (e) {
         console.error('Failed to decode state:', e);
       }
     }
-
-    console.log('Received OAuth code, exchanging for token...');
 
     // Exchange authorization code for session token
     // NEW: Include license_key in the request
@@ -88,8 +85,6 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
     const { session_token, workspace_name, needs_page_setup } = data;
-
-    console.log('OAuth successful:', { workspace_name, needs_page_setup });
 
     // Create redirect URL with token in URL fragment (will be extracted by client-side JS)
     // We use URL fragment (#) because it's not sent to the server and is more secure

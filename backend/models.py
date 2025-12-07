@@ -11,6 +11,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from typing import Dict, Any, List
 import os
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -141,12 +145,12 @@ def run_migrations():
     # Override sqlalchemy.url with environment variable
     alembic_cfg.set_main_option('sqlalchemy.url', get_database_url())
 
-    print("🔄 Running database migrations...")
+    logger.info("🔄 Running database migrations...")
     try:
         command.upgrade(alembic_cfg, "head")
-        print("✅ Database migrations completed successfully")
+        logger.info("✅ Database migrations completed successfully")
     except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        logger.error(f"❌ Migration failed: {e}")
         raise
 
 
@@ -292,7 +296,7 @@ def clear_user_notion_page(bot_id: str):
             user.updated_at = datetime.utcnow()
             session.commit()
             session.refresh(user)
-            print(f"✅ Cleared notion_page_id for user {bot_id}")
+            logger.info(f"✅ Cleared notion_page_id for user {bot_id}")
         return user
     except Exception as e:
         session.rollback()
